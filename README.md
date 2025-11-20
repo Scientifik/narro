@@ -7,7 +7,7 @@
 
 ## EXECUTIVE SUMMARY
 
-Narro is a **$5/month social media curation app** that delivers algorithm-free feeds from users' unlimited selected profiles. Built with AI-first development using Claude Code, we'll move from concept to launch in 3-4 weeks through focused 1.5-hour working sessions. This is a meta-learning project for Black IT Academy members to experience modern AI-assisted product development at startup speed.
+Narro is a **$5/month social media curation app** that delivers algorithm-free feeds from social media profiles on almost any platform. Built with AI-first development using Claude Code, we'll move from concept to launch in 3-4 weeks through focused 1.5-hour working sessions. This is a meta-learning project for Black IT Academy members to experience modern AI-assisted product development at startup speed.
 
 ### Product Specifications
 
