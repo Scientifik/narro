@@ -1,84 +1,62 @@
 # Narro Development Updates
 
-This document tracks our development sessions, documenting what we accomplished in each session and what we plan to tackle next.
+Daily updates tracking progress on the Narro project. The README contains a rough session outline, but we're moving at our own pace based on what makes sense.
 
 ---
 
-## Session 1
+## November 20, 2025
 
-**Date:** November 19, 2024  
-**Duration:** ~90 minutes
+**What we did:**
+- Set up Supabase account and project
+- Created comprehensive backend implementation plan (`docs/backend-implementation-plan.md`)
+- Implemented backend foundation with GORM:
+  - Database schema with SQL migrations (system-wide profile tracking, user lists, feed items)
+  - All models with GORM tags and proper relationships
+  - Database layer with GORM queries (replaced raw SQL)
+  - Authentication service (signup, login, logout) with Supabase Auth
+  - Profile service (add/follow profiles, system-wide profile management)
+  - List service (create/manage lists, organize profiles)
+  - HTTP handlers for all endpoints
+  - Middleware (auth, CORS, error handling)
+  - Complete route setup
+- Refactored from raw SQL to GORM for automatic serialization/deserialization
+- Fixed compilation errors and API compatibility issues
+- Set up environment variable loading with godotenv
+- Resolved database connection configuration (Supabase connection string)
+- Initialized git repository (excluding code directories, tracking docs only)
 
-### What We Accomplished
+**Where we are:**
+- Backend API foundation is implemented and compiles successfully
+- Database schema defined and ready to run migrations
+- Database connection working
+- Core backend structure in place (auth, profiles, lists)
 
-- **Finalized Complete System Architecture**
-  - Evaluated and selected tech stack components:
-    - Backend: Go + Gin framework
-    - Web: Next.js 14+ (App Router) + TypeScript + Tailwind CSS
-    - Mobile: React Native + Expo (managed workflow) + TypeScript
-    - Database: Supabase (PostgreSQL)
-    - Authentication: Supabase Auth
-    - Payments: Stripe
-    - Monitoring: Sentry, PostHog
-  - Created comprehensive architecture document (`docs/architecture.md`)
-  - Documented all technical decisions and rationale
-
-- **Project Scaffolding (Session 2 work)**
-  - Scaffolded Go backend with Gin framework
-    - Created project structure with routes, handlers, services, middleware directories
-    - Set up `main.go` with health check endpoint
-    - Created `go.mod`, `env.example`, and README
-  - Scaffolded Next.js web application
-    - Initialized Next.js 14+ with App Router, TypeScript, Tailwind CSS
-    - Created directory structure: `(auth)`, `dashboard`, `components`, `lib`, `types`
-    - Set up environment variable templates
-  - Scaffolded React Native + Expo mobile application
-    - Initialized Expo app with TypeScript
-    - Set up Expo Router with file-based routing
-    - Created structure: `(auth)`, `(tabs)`, `components`, `lib`, `types`
-    - Configured `app.json` for iOS and Android
-
-- **Front-End Design Implementation**
-  - Created beautiful landing page with hero section, features grid, and pricing
-  - Built login and signup pages with modern UI
-  - Designed dashboard/feed view with mock data showing:
-    - Feed posts from multiple platforms (Twitter, LinkedIn, Instagram)
-    - Platform-specific icons and styling
-    - Post interactions (like, comment, share)
-    - Clean, responsive layout
-
-### Deliverables
-
-- ✅ Complete architecture document (`docs/architecture.md`)
-- ✅ Three fully scaffolded projects (backend, web, mobile)
-- ✅ Complete front-end design (landing, auth, dashboard)
-- ✅ All projects runnable on localhost
-- ✅ Environment variable templates for all projects
-- ✅ README files for each project
-
-### Notes
-
-- All tech stack decisions finalized based on AI-first development approach
-- Projects are ready for Session 3 (Authentication System - Backend)
-- Front-end design provides visual reference for the application
-- All code follows the architecture decisions documented in Session 1
+**Next up:**
+- Run database migrations in Supabase
+- Build user profile functionality (UI for selecting media profiles to follow)
+- Define scraping functionality:
+  - Select scraping vendor/service
+  - Set up periodic scraping jobs
+  - Determine which accounts to scrape and how frequently
+  - Implement scraping scheduling logic
 
 ---
 
-## Session 2 (Planned)
+## November 19, 2025
 
-### What We Plan to Accomplish
+**What we did:**
+- Finalized system architecture and tech stack decisions (Go + Gin, Next.js, React Native + Expo, Supabase)
+- Scaffolded all three projects (backend, web, mobile) with proper structure
+- Created draft/mockup of front-end design (landing page, auth pages, dashboard/feed view with mock data)
+- Created architecture documentation
 
-- **Authentication System - Backend** (as outlined in README.md Session 3)
-  - Email-based authentication implementation
-  - Magic link / one-time password system
-  - Passkey support setup
-  - Traditional password option
-  - Session management
+**Where we are:**
+- All projects are scaffolded and runnable locally
+- Front-end design draft/mockup provides visual reference (needs to be built out properly)
+- Ready to start building authentication system
 
-### Expected Deliverable
-
-- Authentication API endpoints working
+**Next up:**
+- Backend authentication implementation (email auth, magic links, passkeys)
+- Connect front-end to backend APIs
 
 ---
-
