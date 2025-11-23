@@ -2,6 +2,7 @@
 backend/
 web/
 mobile/
+scraper/
 
 # Standard gitignore entries
 .DS_Store

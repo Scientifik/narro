@@ -141,3 +141,4 @@ All endpoints should be configured with CORS to allow requests from the front-en
 - Add loading skeletons instead of "Loading..." text
 
 
+

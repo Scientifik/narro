@@ -4,6 +4,77 @@ Daily updates tracking progress on the Narro project. The README contains a roug
 
 ---
 
+## November 22, 2025
+
+**What we did:**
+- Improved URL parsing flexibility in backend (`backend/src/db/url_parser.go`):
+  - Now handles URLs without protocol (e.g., `twitter.com/username`, `instagram/user`)
+  - Supports short formats (e.g., `twitter/username`, `instagram/user`)
+  - Accepts just usernames (e.g., `@username` assumes Twitter)
+  - Automatically strips query parameters, fragments, and trailing slashes
+  - Handles `www.` prefix removal and normalizes `http://` to `https://`
+  - Updated placeholder and help text to show flexible format examples
+- Fixed frontend validation issue (`web/components/profiles/AddProfileForm.tsx`):
+  - Changed input type from `"url"` to `"text"` to remove browser's strict URL validation
+  - Users can now enter flexible URL formats without browser blocking submission
+  - Backend parser handles all validation and normalization
+- **Scraper Service Implementation:**
+  - Created ScraperAPI provider implementation (`scraper/src/scrapers/scraperapi.py`):
+    - Implements abstract `ScraperProvider` interface
+    - Handles JavaScript rendering for dynamic social media pages
+    - Includes rate limit tracking, error handling, and retry logic
+    - Platform-specific optimizations for Instagram, Twitter, LinkedIn
+  - Updated scraper module to auto-detect provider based on configuration
+  - Added comprehensive verbose logging throughout the application:
+    - Main application with startup/shutdown logging
+    - Queue manager with job creation and status tracking
+    - Worker with detailed per-job processing logs
+    - Scheduler with profile selection reasoning
+    - Parsers (Instagram, Twitter, LinkedIn) with per-post parsing details
+    - Database queries with operation logging
+    - Duplicate detector with similarity matching details
+  - Fixed Python 3.13 compatibility issues:
+    - Upgraded `psycopg2-binary` → `psycopg[binary]` (v3) for Python 3.13 support
+    - Upgraded `sqlalchemy` from 2.0.23 → 2.0.44
+    - Upgraded `typing-extensions` from 4.8.0 → 4.15.0
+    - Commented out `python-Levenshtein` (optional dependency)
+  - Fixed database connection to use `psycopg` driver (converts `postgresql://` to `postgresql+psycopg://`)
+  - Fixed enum mapping issue with custom `TypeDecorator` for `PlatformType`:
+    - Handles conversion between database strings and Python enum
+    - Ensures lowercase values match database enum
+  - Fixed dataclass field ordering in `ParsedFeedItem` (default values must come after required fields)
+  - Created `run.py` entry point script for easy execution
+  - Updated README with proper run instructions
+- **Scraper Service Research:**
+  - Conducted comprehensive comparison of 5 scraping services:
+    - ScraperAPI (selected - cost-effective, reliable, simple integration)
+    - Bright Data (enterprise option)
+    - Apify (pre-built scrapers)
+    - ScrapingBee (AI-powered)
+    - Parse.bot (limited info)
+  - Created detailed comparison tables with pricing, features, and capabilities
+
+**Where we are:**
+- Profile URL input is now user-friendly and accepts various input formats
+- Backend parser robustly handles edge cases and normalizes URLs to canonical format
+- Users can paste URLs in any common format and the system will parse them correctly
+- Scraper service is fully implemented and ready to run
+- ScraperAPI integration complete with error handling and retry logic
+- All dependencies installed and compatible with Python 3.13
+- Comprehensive logging system in place for debugging and monitoring
+- Database enum mapping fixed to work with existing PostgreSQL enum
+- Service can be run with `python3 run.py` from scraper directory
+
+**Next up:**
+- Configure `.env` file with database URL and ScraperAPI credentials
+- Test scraper with actual social media profiles
+- Verify data is being scraped and stored correctly
+- Continue testing profile management with various URL formats
+- Build out feed/aggregation functionality
+- Implement scraping service integration
+
+---
+
 ## November 20, 2025
 
 **What we did:**
