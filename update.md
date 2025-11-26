@@ -4,6 +4,63 @@ Daily updates tracking progress on the Narro project. The README contains a roug
 
 ---
 
+## November 25, 2025
+
+**What we did:**
+- **Apify Integration:**
+  - Added Apify provider support as alternative to ScraperAPI (`scraper/src/scrapers/apify.py`)
+  - Fixed Apify API endpoint format (uses `~` instead of `/` in actor IDs for URLs)
+  - Integrated Instagram Post Scraper actor (`apify/instagram-post-scraper`)
+  - Updated provider factory to support multiple providers with auto-detection
+  - Added environment variables: `APIFY_API_TOKEN`, `APIFY_API_URL`, `SCRAPER_PROVIDER`
+  
+- **Database Schema Updates:**
+  - Added `hashtags` JSONB field to `feed_items` table (migration 004)
+  - Added `thumbnail` TEXT field to `feed_items` table for image URLs
+  - Updated FeedItem models in both Python (scraper) and Go (backend)
+  
+- **Scraper Service Improvements:**
+  - Changed to single-run mode: runs once, processes all jobs, then exits gracefully
+  - Added `RESULTS_LIMIT` global parameter (default: 5) for controlling items per request
+  - Updated scheduler to only create jobs for profiles followed by users (joins with `user_social_profiles`)
+  - Fixed timezone issues: all datetime operations now use timezone-aware datetimes
+  - Improved database connection pooling with proper configuration
+  - Fixed PostgreSQL enum comparison issue (cast enum to text for comparison)
+  - Removed time-based filtering for debugging (scrapes all profiles regardless of last_scraped_at)
+  
+- **Instagram Parser Enhancements:**
+  - Updated to handle both Apify (structured JSON) and ScraperAPI (HTML) formats
+  - Fixed content_text population (handles None values, uses `caption` from Apify)
+  - Added hashtags extraction and storage (from Apify array or extracted from text)
+  - Added thumbnail extraction: uses `displayUrl` from Apify, with fallbacks to `images[0]`, `imageUrls[0]`, `thumbnailUrl`
+  - Enhanced debug logging for troubleshooting
+  
+- **Backend Feed API:**
+  - Created feed handler and service (`backend/src/handlers/feed_handler.go`, `backend/src/services/feed_service.go`)
+  - Added `GET /api/feed` endpoint with pagination and filtering
+  - Updated FeedItem model to include hashtags and thumbnail fields
+  
+- **CLI Tools:**
+  - Created `replay_apify_run.py`: CLI tool to replay completed Apify runs and insert data into database
+  - Supports automatic profile detection from run input or explicit profile ID
+
+**Where we are:**
+- Scraper supports both ScraperAPI and Apify providers (configurable via environment variables)
+- Instagram Post Scraper integration complete with proper field mapping
+- Feed items now store hashtags and thumbnail URLs
+- Single-run mode makes testing and debugging easier
+- Feed API endpoint ready for frontend integration
+- Database schema updated with new fields
+
+**Next up:**
+- Test scraper with real Instagram profiles
+- Verify hashtags and thumbnails are being saved correctly
+- Build feed display UI in web app
+- Implement image storage/optimization for thumbnails
+- Re-enable time-based filtering after debugging
+
+---
+
 ## November 22, 2025
 
 **What we did:**
