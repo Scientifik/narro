@@ -128,6 +128,7 @@ narro/
 - `user_id` (UUID, foreign key → users.id)
 - `display_name` (string, nullable)
 - `avatar_url` (string, nullable)
+- `theme_id` (UUID, foreign key → themes.id, nullable) - user's selected theme
 - `subscription_status` (enum: 'active', 'canceled', 'past_due')
 - `stripe_customer_id` (string, unique, nullable)
 - `stripe_subscription_id` (string, unique, nullable)
@@ -151,11 +152,13 @@ narro/
 #### `feed_items` (scraped posts)
 - `id` (UUID, primary key)
 - `social_profile_id` (UUID, foreign key → social_profiles.id)
-- `platform` (enum: 'twitter', 'linkedin', 'instagram')
+- `platform` (enum: 'twitter', 'linkedin', 'instagram', 'youtube')
 - `platform_post_id` (string) - unique ID from platform
 - `content_text` (text) - post text content
 - `content_html` (text, nullable) - original HTML if needed
 - `media_urls` (jsonb, nullable) - array of image/video URLs
+- `hashtags` (jsonb, nullable) - array of hashtags extracted from post
+- `thumbnail` (text, nullable) - thumbnail image URL or local storage path
 - `post_url` (string) - link to original post
 - `author_username` (string)
 - `author_display_name` (string, nullable)
@@ -164,6 +167,20 @@ narro/
 - `scraped_at` (timestamp) - when we scraped it
 - `created_at` (timestamp)
 - **Unique constraint:** (platform, platform_post_id)
+
+#### `themes` (user-customizable color themes)
+- `id` (UUID, primary key)
+- `name` (text, unique) - theme name
+- `description` (text, nullable)
+- `color_palette` (jsonb) - color scheme definition
+- `is_default` (boolean) - default theme flag
+- `is_active` (boolean) - active/inactive status
+- `is_holiday` (boolean) - holiday theme flag
+- `starts_at` (timestamp, nullable) - holiday theme start date
+- `ends_at` (timestamp, nullable) - holiday theme end date
+- `created_at` (timestamp)
+- `updated_at` (timestamp)
+- `deleted_at` (timestamp, nullable) - soft delete
 
 #### `subscription_events` (Stripe webhook events log)
 - `id` (UUID, primary key)
@@ -180,6 +197,10 @@ narro/
 - `social_profiles.user_id` - for user's followed profiles
 - `social_profiles.last_scraped_at` - for scraping job queries
 - `user_profiles.user_id` - for user profile lookups
+- `themes.is_active` - for filtering active themes
+- `themes.is_default` - for finding default themes
+- `themes.is_holiday` - for holiday theme queries
+- `user_profiles.theme_id` - for user theme lookups
 
 ---
 
@@ -217,6 +238,19 @@ narro/
   - Query params: `?page=1&limit=20&before=<timestamp>`
 - `GET /api/feed/refresh` - Trigger manual refresh
 
+**Themes:**
+- `GET /api/themes` - List all active themes
+- `GET /api/themes/:id` - Get theme by ID
+- `GET /api/user/theme` - Get current user's theme (protected)
+- `PATCH /api/user/theme` - Update user's theme (protected)
+- `GET /api/admin/themes` - List all themes including inactive (admin)
+- `POST /api/admin/themes` - Create new theme (admin)
+- `PATCH /api/admin/themes/:id` - Update theme (admin)
+- `DELETE /api/admin/themes/:id` - Delete theme (admin)
+
+**Thumbnails:**
+- `GET /thumbnails/*filepath` - Serve thumbnail files (public, with security checks)
+
 **Subscription:**
 - `POST /api/subscription/create-checkout` - Create Stripe checkout session
 - `GET /api/subscription/status` - Get subscription status
@@ -242,27 +276,70 @@ narro/
 **Approach:** Third-party scraping API (separate microservice)
 - **Rationale:** Saves development time, handles complexity, cost-effective
 - **Integration:** Backend will call scraping API to trigger/fetch content
-- **To be defined:** Specific provider and integration details in later session
+- **Providers:** ScraperAPI and Apify (configurable via environment variables)
 
-### 5.2 Scraping Flow (TBD - depends on API provider)
+### 5.2 Scraping Flow
 
-**General approach:**
-1. User adds social profile
-2. Backend calls scraping API to add profile to scraping queue
-3. Scraping API periodically fetches content
-4. Backend polls or receives webhooks from scraping API
-5. Backend stores scraped content in database
-6. Feed aggregates content from database
+**Current implementation:**
+1. Scraper service runs independently (Python background service)
+2. Scheduler creates jobs for profiles that need scraping
+3. Workers process jobs using configured provider (ScraperAPI or Apify)
+4. Platform-specific parsers extract data from scraped content
+5. Thumbnails are downloaded and stored using storage provider
+6. Feed items are saved to database with hashtags and thumbnail paths
+7. Duplicate detection identifies cross-platform duplicates
 
-**Details to be determined:**
-- Scraping API provider selection
-- Integration method (REST API, webhooks, polling)
-- Scheduling/triggering mechanism
-- Data format and normalization
+### 5.3 Thumbnail Storage
+
+**Storage Provider System:**
+- Pluggable storage architecture (local filesystem, S3, FTP support planned)
+- Local storage saves files to `thumbnails/{job_id}/{uuid}.jpg`
+- Backend serves thumbnails via `/thumbnails/*` endpoint
+- Feed service constructs full URLs for thumbnails (handles both external URLs and local paths)
+- Storage can be enabled/disabled via `STORAGE_ENABLED` environment variable
 
 ---
 
-## 6. AUTHENTICATION FLOW
+## 6. THEMES SYSTEM
+
+### 6.1 Theme Architecture
+
+**Database Storage:**
+- Themes stored in `themes` table with JSONB color palettes
+- User theme preference stored in `user_profiles.theme_id`
+- Supports holiday themes with date ranges (`starts_at`, `ends_at`)
+- Default themes seeded from `backend/config/themes.json`
+
+**Frontend Implementation:**
+- Theme context provider manages current theme state
+- CSS variables updated dynamically based on selected theme
+- Theme selector component allows users to switch themes
+- Theme preference persisted in user profile
+
+**Color Palette Structure:**
+- Primary, secondary, accent colors
+- Background colors (primary, secondary, gradient)
+- Text colors (primary, secondary, muted)
+- Border, card, and button colors
+- Platform-specific colors (Twitter, LinkedIn, Instagram, YouTube)
+
+### 6.2 Theme API
+
+**Public Endpoints:**
+- List active themes
+- Get theme by ID
+
+**User Endpoints (Protected):**
+- Get current user's theme
+- Update user's theme preference
+
+**Admin Endpoints:**
+- Create, update, delete themes
+- List all themes including inactive
+
+---
+
+## 7. AUTHENTICATION FLOW
 
 ### 6.1 Web Flow
 1. User enters email on login page
@@ -287,7 +364,7 @@ narro/
 
 ---
 
-## 7. MOBILE + WEB ARCHITECTURE
+## 8. MOBILE + WEB ARCHITECTURE
 
 ### 7.1 Shared Code Strategy
 
@@ -319,7 +396,7 @@ narro/
 
 ---
 
-## 8. DEPLOYMENT ARCHITECTURE
+## 9. DEPLOYMENT ARCHITECTURE
 
 ### 8.1 Web (Vercel)
 - **Build:** `npm run build`
@@ -341,20 +418,21 @@ narro/
 
 ---
 
-## 9. ENVIRONMENT VARIABLES
+## 10. ENVIRONMENT VARIABLES
 
 ### Backend (.env)
 ```
 NODE_ENV=production
 PORT=3000
+HOST=localhost
 DATABASE_URL=<supabase-connection-string>
 SUPABASE_URL=<supabase-project-url>
 SUPABASE_SERVICE_KEY=<supabase-service-key>
 STRIPE_SECRET_KEY=<stripe-secret-key>
 STRIPE_WEBHOOK_SECRET=<stripe-webhook-secret>
 SENTRY_DSN=<sentry-dsn>
-SCRAPING_API_URL=<scraping-api-url> (TBD)
-SCRAPING_API_KEY=<scraping-api-key> (TBD)
+THUMBNAILS_DIR=./thumbnails
+API_BASE_URL=<api-base-url> (optional, for constructing thumbnail URLs)
 ```
 
 ### Web (.env.local)
@@ -375,7 +453,18 @@ EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY=<stripe-publishable-key>
 
 ---
 
-## 10. COST ESTIMATES
+### Scraper (.env)
+```
+DATABASE_URL=<supabase-connection-string>
+SCRAPERAPI_API_KEY=<scraperapi-key> (optional)
+APIFY_API_TOKEN=<apify-token> (optional)
+SCRAPER_PROVIDER=auto (or 'scraperapi', 'apify', 'mock')
+STORAGE_PROVIDER=local (or 's3', 'ftp')
+STORAGE_LOCAL_DIR=./thumbnails (or use THUMBNAILS_DIR)
+STORAGE_ENABLED=true
+```
+
+## 11. COST ESTIMATES
 
 ### Free Tier (First 100-200 users)
 - **Supabase:** Free (500MB DB, 2GB bandwidth)
@@ -396,7 +485,7 @@ EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY=<stripe-publishable-key>
 
 ---
 
-## 11. SECURITY CONSIDERATIONS
+## 12. SECURITY CONSIDERATIONS
 
 1. **API Authentication:** All endpoints require Supabase JWT
 2. **Rate Limiting:** Implement on backend (gin-rate-limit middleware)
@@ -409,7 +498,7 @@ EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY=<stripe-publishable-key>
 
 ---
 
-## 12. DEVELOPMENT WORKFLOW
+## 13. DEVELOPMENT WORKFLOW
 
 ### 12.1 Local Development
 
@@ -446,7 +535,7 @@ npx expo start
 
 ---
 
-## 13. NEXT STEPS (Session 2)
+## 14. NEXT STEPS (Session 2)
 
 1. Initialize three repositories (backend, web, mobile)
 2. Set up Supabase project

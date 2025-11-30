@@ -73,10 +73,12 @@ narro/
   - Profile management (add/remove social profiles)
   - List management (organize profiles into lists)
   - URL parsing (flexible input formats: `twitter.com/user`, `@user`, `twitter/user`, etc.)
-  - Database schema (migrations 001-003)
+  - Database schema (migrations 001-005)
   - GORM-based database layer
   - CORS middleware
   - Error handling middleware
+  - Themes system (user-customizable color palettes)
+  - Thumbnail serving endpoint (`/thumbnails/*`)
 
 - **Web App:**
   - Authentication UI (signup, login, logout)
@@ -85,6 +87,8 @@ narro/
   - API client with token management
   - Protected routes
   - Auth context for state management
+  - Theme system UI (theme selector, context provider, hooks)
+  - Theme-aware UI components using CSS variables
 
 - **Scraper Service:**
   - ScraperAPI provider implementation
@@ -97,6 +101,8 @@ narro/
   - Python 3.13 compatibility
   - Single-run mode for testing
   - CLI tool for replaying Apify runs (`replay_apify_run.py`)
+  - Storage provider system (local filesystem storage for thumbnails)
+  - Thumbnail downloading and caching in parsers
 
 ### 🚧 In Progress / Next Up
 - Feed aggregation engine
@@ -133,6 +139,10 @@ narro/
 8. **Feed items metadata:** Feed items store hashtags (JSONB array) and thumbnail URLs for rich display. Thumbnails use `displayUrl` from Apify or first image as fallback.
 
 9. **Single-run mode:** Scraper can run in single-run mode (processes all jobs once and exits) for testing, or continuous mode with scheduler.
+
+10. **Themes system:** Users can customize app appearance with themes. Themes are stored in database with JSONB color palettes. Default themes are seeded from `backend/config/themes.json`. User theme preference stored in `user_profiles.theme_id`.
+
+11. **Thumbnail storage:** Scraper downloads and stores thumbnails locally using pluggable storage providers. Local storage saves files to `thumbnails/{job_id}/{uuid}.jpg`. Backend serves thumbnails via `/thumbnails/*` endpoint. Feed service constructs full URLs for thumbnails.
 
 ## Documentation Map
 
@@ -184,6 +194,9 @@ Each project has its own `.env.example` file. Copy to `.env` (or `.env.local` fo
 - `SUPABASE_URL` - Supabase project URL
 - `SUPABASE_SERVICE_KEY` - Supabase service key
 - `PORT` - Server port (default: 3000)
+- `THUMBNAILS_DIR` - Directory for serving thumbnails (default: './thumbnails')
+- `API_BASE_URL` - Base URL for API (for constructing thumbnail URLs, optional)
+- `HOST` - Server host (default: 'localhost')
 
 **Web (.env.local):**
 - `NEXT_PUBLIC_API_URL` - Backend API URL (default: http://localhost:3030)
@@ -199,6 +212,9 @@ Each project has its own `.env.example` file. Copy to `.env` (or `.env.local` fo
 - `SCRAPER_PROVIDER` - Provider to use: 'scraperapi', 'apify', 'auto', or 'mock' (default: 'auto')
 - `SCHEDULER_INTERVAL_MINUTES` - How often to check for profiles (default: 5, not used in single-run mode)
 - `MAX_CONCURRENT_JOBS` - Max parallel jobs (default: 10)
+- `STORAGE_PROVIDER` - Storage provider: 'local', 's3', 'ftp' (default: 'local')
+- `STORAGE_LOCAL_DIR` or `THUMBNAILS_DIR` - Directory for local storage (default: './thumbnails')
+- `STORAGE_ENABLED` - Enable/disable thumbnail storage (default: 'true')
 
 ### Database Migrations
 
@@ -209,6 +225,7 @@ Migrations are SQL files in each project's `migrations/` directory. Run in Supab
 - `backend/migrations/002_add_deleted_at_columns.sql` - Soft delete support
 - `backend/migrations/003_add_youtube_platform.sql` - YouTube platform enum
 - `backend/migrations/004_add_hashtags_and_thumbnail.sql` - Hashtags and thumbnail fields for feed_items
+- `backend/migrations/005_add_themes_system.sql` - Themes table and user profile theme_id
 
 **Scraper migrations:**
 - `scraper/migrations/001_scraping_jobs.sql` - Job queue table
@@ -325,8 +342,15 @@ function MyComponent() {
 | Scraper parsers | `scraper/src/parsers/` |
 | Scraper queue | `scraper/src/queue/` |
 | Scraper providers | `scraper/src/scrapers/` (ScraperAPI, Apify, Mock) |
+| Scraper storage | `scraper/src/storage/` (LocalStorageProvider, base StorageProvider) |
 | Feed handler | `backend/src/handlers/feed_handler.go` |
 | Feed service | `backend/src/services/feed_service.go` |
+| Theme handler | `backend/src/handlers/theme_handler.go` |
+| Theme service | `backend/src/services/theme_service.go` |
+| Theme config | `backend/config/themes.json` |
+| Web theme context | `web/lib/theme-context.tsx` |
+| Web theme hooks | `web/lib/hooks/use-theme.ts` |
+| Web theme selector | `web/components/theme/ThemeSelector.tsx` |
 | Web API client | `web/lib/api.ts` |
 | Web API endpoints | `web/lib/api-endpoints.ts` |
 | Web auth context | `web/lib/auth-context.tsx` |
@@ -345,6 +369,7 @@ function MyComponent() {
 - **`feed_items`** - Scraped posts (system-wide cache) with hashtags and thumbnail URLs
 - **`scraping_jobs`** - Job queue for scraper service
 - **`feed_item_duplicates`** - Cross-platform duplicate relationships
+- **`themes`** - Theme definitions with color palettes (JSONB), supports holiday themes with date ranges
 
 ### Important Relationships
 
@@ -380,6 +405,19 @@ function MyComponent() {
 ### Feed
 - `GET /api/feed` - Get unified feed (with pagination: `?page=1&limit=20&before=<timestamp>`)
 
+### Themes
+- `GET /api/themes` - List all active themes (`?include_inactive=true` for all)
+- `GET /api/themes/:id` - Get theme by ID
+- `GET /api/user/theme` - Get current user's theme (protected)
+- `PATCH /api/user/theme` - Update user's theme (protected, body: `{ theme_id: uuid }`)
+- `GET /api/admin/themes` - List all themes including inactive (admin)
+- `POST /api/admin/themes` - Create new theme (admin)
+- `PATCH /api/admin/themes/:id` - Update theme (admin)
+- `DELETE /api/admin/themes/:id` - Delete theme (admin)
+
+### Thumbnails
+- `GET /thumbnails/*filepath` - Serve thumbnail files (public, with security checks)
+
 ## When to Update This File
 
 Update this context file when:
@@ -390,7 +428,7 @@ Update this context file when:
 - [ ] Development workflow changes
 - [ ] New team member onboarding
 
-**Last Updated:** November 25, 2025
+**Last Updated:** November 29, 2025
 
 ---
 
