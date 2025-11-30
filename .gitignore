@@ -3,6 +3,7 @@ backend/
 web/
 mobile/
 scraper/
+thumbnails/
 
 # Standard gitignore entries
 .DS_Store
