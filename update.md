@@ -4,6 +4,70 @@ Daily updates tracking progress on the Narro project. The README contains a roug
 
 ---
 
+## December 3, 2025
+
+**What we did:**
+- **Feed Configuration System (Complete Refactor):**
+  - Renamed "lists" to "feeds" throughout the entire codebase for consistent terminology
+  - Created database migrations to rename tables: `profile_lists` → `feeds`, `profile_list_items` → `feed_profile_items`
+  - Added `feed_configurations` table with UI customization options (view type, card style, background image, auto-refresh)
+  - Updated all backend models, services, handlers, and routes to use "feed" terminology
+  - Updated all frontend types, API endpoints, and hooks to use "feed" terminology
+  
+- **Backend Changes:**
+  - Created `Feed`, `FeedProfileItem`, and `FeedConfiguration` models
+  - Created `FeedManagementService` for feed CRUD operations
+  - Created `FeedConfigurationService` for feed configuration management
+  - Updated `FeedService` to support filtering by `feed_id` parameter
+  - Updated all database layer functions to use feed terminology
+  - Updated routes: `/api/lists` → `/api/feeds`, added `/api/feeds/:id/feed-config` endpoints
+  - Updated profile service to use `feed_id` instead of `list_id`
+  
+- **Frontend Changes:**
+  - Created feed view components: `ListFeedView`, `GridFeedView`, `GalleryFeedView`, `FeedCard`
+  - Created `FeedConfigurationModal` for configuring feed settings
+  - Created `FeedProfileManager` component for integrated profile management within feeds
+  - Created `FeedOnboarding` component for empty feeds
+  - Refactored dashboard page to:
+    - Support multiple feeds with feed selector
+    - Load and apply feed configurations
+    - Render appropriate view type (list/grid/gallery) based on configuration
+    - Integrate profile management directly under each feed
+    - Show onboarding for empty feeds
+    - Support auto-refresh based on configuration
+    - Apply background images from configuration
+  - Updated navigation: removed "Profiles" link, updated "Lists" to "Feeds"
+  - Updated all components to use feed terminology
+  
+- **View Types:**
+  - **List**: Infinite scroll vertical list (default)
+  - **Grid**: Responsive grid layout with cards
+  - **Gallery**: Image-focused wide grid view (TikTok/Instagram style, maximizes image display)
+  
+- **Configuration Options:**
+  - View type (list/grid/gallery)
+  - Card style (compact/expanded/minimal)
+  - Background image URL
+  - Auto-refresh enabled/disabled
+  - Auto-refresh interval (seconds)
+
+**Where we are:**
+- Complete feed configuration system allows users to customize how each feed displays
+- Users can create multiple feeds with different configurations
+- Profile management is integrated into each feed view
+- Three distinct view types provide different browsing experiences
+- Auto-refresh functionality supports real-time updates
+- Consistent "feed" terminology throughout the application
+
+**Next up:**
+- Test feed creation and configuration
+- Test all three view types with real data
+- Verify auto-refresh functionality
+- Test profile management within feeds
+- Consider adding more configuration options (e.g., sorting, filtering)
+
+---
+
 ## December 2, 2025
 
 **What we did:**

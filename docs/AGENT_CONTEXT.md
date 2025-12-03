@@ -6,12 +6,12 @@
 
 Narro is a **$5/month social media curation app** that delivers algorithm-free feeds from social media profiles on multiple platforms. The project consists of four main components:
 
-- **Backend API** (Go) - REST API server handling auth, profiles, lists, and feed aggregation
+- **Backend API** (Go) - REST API server handling auth, profiles, feeds, feed customization, profile favoriting, RSS generation, and feed aggregation
 - **Web App** (Next.js) - Web interface for managing profiles and viewing feeds
 - **Mobile App** (React Native + Expo) - iOS/Android apps (scaffolded, pending implementation)
 - **Scraper Service** (Python) - Background service that scrapes social media profiles and stores content
 
-**Current Status:** Backend and web app are functional with authentication, profile management, and list organization. Scraper service is implemented and ready to run. Feed aggregation and display are next priorities.
+**Current Status:** Backend and web app are fully functional with authentication, feed management, feed customization, profile favoriting, RSS feed generation, and a complete UI overhaul. Scraper service is implemented and ready to run. Feed-centric navigation with Feed Management Hub, Wide Mode, and individual feed views are complete.
 
 ## Project Structure
 
@@ -71,24 +71,38 @@ narro/
 - **Backend:**
   - Authentication system (Supabase Auth integration)
   - Profile management (add/remove social profiles)
-  - List management (organize profiles into lists)
+  - Feed management (organize profiles into feeds with customization)
+  - Feed customization (emoji, custom images, colors, descriptions)
+  - Profile favoriting within feeds (star/unstar profiles)
+  - Home feed configuration (user-selectable default feed)
+  - RSS feed generation (RSS 2.0 format per feed)
   - URL parsing (flexible input formats: `twitter.com/user`, `@user`, `twitter/user`, etc.)
-  - Database schema (migrations 001-005)
+  - Database schema (migrations 001-009)
   - GORM-based database layer
   - CORS middleware
   - Error handling middleware
-  - Themes system (user-customizable color palettes)
   - Thumbnail serving endpoint (`/thumbnails/*`)
+  - Wide mode feed aggregation (all feeds combined)
 
 - **Web App:**
   - Authentication UI (signup, login, logout)
-  - Profile management UI (add/remove profiles)
-  - List management UI (create/manage lists)
+  - Feed-centric navigation (Home, Feeds, Wide Mode, Settings, Help)
+  - Feed Management Hub (grid/list views, feed cards with customization)
+  - Individual feed view pages with filtering and profile favoriting
+  - Feed configuration UI (view types: list/grid/gallery, card styles, background images)
+  - Feed display UI with three view types (list, grid, gallery)
+  - Frontend filtering (date range, profile, hashtag, starred)
+  - Profile favoriting UI (star/unstar within feeds)
+  - RSS feed links and copy-to-clipboard
+  - Home feed selection in settings
+  - Wide Mode page (aggregated view of all feeds)
+  - Feed customization (emoji, colors, custom images, descriptions)
+  - Integrated profile management within feeds
+  - Feed onboarding for empty feeds
   - API client with token management
   - Protected routes
   - Auth context for state management
-  - Theme system UI (theme selector, context provider, hooks)
-  - Theme-aware UI components using CSS variables
+  - Consistent design system (removed user-selectable themes, fixed design with feed-level customization)
 
 - **Scraper Service:**
   - ScraperAPI provider implementation
@@ -105,10 +119,9 @@ narro/
   - Thumbnail downloading and caching in parsers
 
 ### 🚧 In Progress / Next Up
-- Feed aggregation engine
-- Feed display UI
-- Scraper testing with real profiles
 - Mobile app UI implementation
+- Help page and tutorial system
+- Additional feed customization options
 
 ### ⏳ Planned
 - Stripe integration
@@ -132,7 +145,7 @@ narro/
    - `@username` → `https://twitter.com/username` (assumes Twitter)
    - `twitter/username` → `https://twitter.com/username`
 
-6. **Default lists:** Every user gets a default "All Profiles" list on signup (marked with `is_default = true`).
+6. **Default feeds:** Every user gets a default "All Profiles" feed on signup (marked with `is_default = true`).
 
 7. **Shared database:** Backend and scraper use the same Supabase PostgreSQL database.
 
@@ -140,9 +153,19 @@ narro/
 
 9. **Single-run mode:** Scraper can run in single-run mode (processes all jobs once and exits) for testing, or continuous mode with scheduler.
 
-10. **Themes system:** Users can customize app appearance with themes. Themes are stored in database with JSONB color palettes. Default themes are seeded from `backend/config/themes.json`. User theme preference stored in `user_profiles.theme_id`.
+10. **Feed customization:** Each feed can be customized with emoji, custom image URL, color, and description. Customization is visual-only and doesn't affect global UI appearance.
 
-11. **Thumbnail storage:** Scraper downloads and stores thumbnails locally using pluggable storage providers. Local storage saves files to `thumbnails/{job_id}/{uuid}.jpg`. Backend serves thumbnails via `/thumbnails/*` endpoint. Feed service constructs full URLs for thumbnails.
+11. **Profile favoriting:** Users can star/favorite specific profiles within a feed for visual distinction. Starred profiles are stored in `feed_profile_favorites` table.
+
+12. **Home feed:** Users can set a preferred home feed that loads by default on the dashboard. Stored in `user_profiles.home_feed_id`.
+
+13. **RSS feeds:** Each feed has an RSS feed URL at `/feed/{feed_id}.rss` (or `.xml`). RSS feeds are generated on-demand in RSS 2.0 format.
+
+14. **Frontend filtering:** All feed filtering (by date, profile, hashtag, starred status) is done on the frontend. Backend returns all feed items for the feed, frontend applies filters.
+
+15. **Wide Mode:** Aggregated view showing all posts from all user feeds with feed attribution.
+
+16. **Thumbnail storage:** Scraper downloads and stores thumbnails locally using pluggable storage providers. Local storage saves files to `thumbnails/{job_id}/{uuid}.jpg`. Backend serves thumbnails via `/thumbnails/*` endpoint. Feed service constructs full URLs for thumbnails.
 
 ## Documentation Map
 
@@ -229,6 +252,10 @@ Migrations are SQL files in each project's `migrations/` directory. Run in Supab
 - `backend/migrations/003_add_youtube_platform.sql` - YouTube platform enum
 - `backend/migrations/004_add_hashtags_and_thumbnail.sql` - Hashtags and thumbnail fields for feed_items
 - `backend/migrations/005_add_themes_system.sql` - Themes table and user profile theme_id
+- `backend/migrations/006_rename_lists_to_feeds.sql` - Renamed lists to feeds throughout schema
+- `backend/migrations/007_add_feed_configurations.sql` - Feed configuration table (view types, card styles, etc.)
+- `backend/migrations/008_add_feed_customization_fields.sql` - Feed customization (emoji, custom_image_url, description, rss_feed_url)
+- `backend/migrations/009_add_home_feed_and_profile_favoriting.sql` - Home feed and profile favoriting tables
 
 **Scraper migrations:**
 - `scraper/migrations/001_scraping_jobs.sql` - Job queue table
@@ -322,12 +349,17 @@ function MyComponent() {
 
 - **Always check `update.md`** for the most recent changes and current state
 - **System-wide profiles:** When a user adds a profile, check if it exists in `social_profiles` first
-- **Default lists:** Every user gets a default "All Profiles" list on signup (cannot be deleted)
+- **Default feeds:** Every user gets a default "All Profiles" feed on signup (cannot be deleted)
+- **Frontend filtering:** All feed filtering (date, profile, hashtag, starred) is done on the frontend, not backend
+- **Feed customization:** Feeds can be customized with emoji, colors, custom images, and descriptions (visual only)
+- **Profile favoriting:** Users can star profiles within feeds for visual distinction
+- **RSS feeds:** Each feed has an RSS feed at `/feed/{feed_id}.rss` format
 - **Scraper runs independently:** Background service, not triggered by API calls
 - **Database is shared:** Backend and scraper use the same Supabase database
 - **URL parsing is flexible:** Backend handles various formats, normalizes to canonical URL
 - **Authentication:** Uses Supabase Auth, JWT tokens stored in localStorage (web) or SecureStore (mobile)
 - **CORS:** Backend CORS middleware allows all origins in development (restrict in production)
+- **Design system:** Removed user-selectable themes; using consistent fixed design with feed-level customization
 
 ## Quick Reference: File Locations
 
@@ -348,17 +380,30 @@ function MyComponent() {
 | Scraper storage | `scraper/src/storage/` (LocalStorageProvider, base StorageProvider) |
 | Feed handler | `backend/src/handlers/feed_handler.go` |
 | Feed service | `backend/src/services/feed_service.go` |
+| Feed management handler | `backend/src/handlers/feed_management_handler.go` |
+| Feed management service | `backend/src/services/feed_management_service.go` |
+| Feed configuration handler | `backend/src/handlers/feed_configuration_handler.go` |
+| Feed configuration service | `backend/src/services/feed_configuration_service.go` |
+| Feed profile favorite handler | `backend/src/handlers/feed_profile_favorite_handler.go` |
+| Feed profile favorite service | `backend/src/services/feed_profile_favorite_service.go` |
+| RSS service | `backend/src/services/rss_service.go` |
+| User settings handler | `backend/src/handlers/user_settings_handler.go` |
+| User service | `backend/src/services/user_service.go` |
 | Theme handler | `backend/src/handlers/theme_handler.go` |
 | Theme service | `backend/src/services/theme_service.go` |
 | Theme config | `backend/config/themes.json` |
-| Web theme context | `web/lib/theme-context.tsx` |
-| Web theme hooks | `web/lib/hooks/use-theme.ts` |
-| Web theme selector | `web/components/theme/ThemeSelector.tsx` |
 | Web API client | `web/lib/api.ts` |
 | Web API endpoints | `web/lib/api-endpoints.ts` |
 | Web auth context | `web/lib/auth-context.tsx` |
 | Web API hooks | `web/lib/hooks/use-api.ts` |
+| Web feed config hooks | `web/lib/hooks/use-feed-config.ts` |
+| Web home feed hooks | `web/lib/hooks/use-home-feed.ts` |
+| Web feed favorites hooks | `web/lib/hooks/use-feed-favorites.ts` |
+| Web wide mode hooks | `web/lib/hooks/use-wide-mode-feed.ts` |
 | Web types | `web/types/api.ts` |
+| Web feed components | `web/components/feed/` |
+| Web feed management components | `web/components/feeds/` |
+| Web navigation | `web/components/navigation/TopNavigation.tsx` |
 
 ## Database Schema Overview
 
@@ -367,8 +412,10 @@ function MyComponent() {
 - **`user_profiles`** - Extends Supabase auth.users with subscription info
 - **`social_profiles`** - System-wide registry of profiles (one per platform+username)
 - **`user_social_profiles`** - Junction table (users → profiles they follow)
-- **`profile_lists`** - User-defined lists (everyone gets default list)
-- **`profile_list_items`** - Junction table (lists → profiles)
+- **`feeds`** - User-defined feeds (everyone gets default feed) with customization fields (emoji, custom_image_url, description, rss_feed_url)
+- **`feed_profile_items`** - Junction table (feeds → profiles)
+- **`feed_configurations`** - UI configuration for each feed (view type, card style, background image)
+- **`feed_profile_favorites`** - Profile favoriting within feeds (user_id, feed_id, user_social_profile_id)
 - **`feed_items`** - Scraped posts (system-wide cache) with hashtags and thumbnail URLs
 - **`scraping_jobs`** - Job queue for scraper service
 - **`feed_item_duplicates`** - Cross-platform duplicate relationships
@@ -376,8 +423,11 @@ function MyComponent() {
 
 ### Important Relationships
 
-- One user → many lists (via `profile_lists`)
-- One list → many profiles (via `profile_list_items`)
+- One user → many feeds (via `feeds`)
+- One user → one home feed (via `user_profiles.home_feed_id`)
+- One feed → many profiles (via `feed_profile_items`)
+- One feed → one configuration (via `feed_configurations.feed_id`, unique)
+- One user → many starred profiles per feed (via `feed_profile_favorites`)
 - One profile → many users (via `user_social_profiles`)
 - One profile → many feed items (via `feed_items.social_profile_id`)
 - Feed items can have duplicate relationships (via `feed_item_duplicates`)
@@ -391,22 +441,36 @@ function MyComponent() {
 - `GET /api/auth/me` - Get current user
 
 ### Profiles
-- `GET /api/profiles` - List user's followed profiles (`?list_id=<uuid>` filter)
-- `POST /api/profiles` - Add a profile URL
+- `GET /api/profiles` - List user's followed profiles (`?feed_id=<uuid>` filter)
+- `POST /api/profiles` - Add a profile URL (optional `feed_id` in body)
 - `GET /api/profiles/:id` - Get profile details
 - `DELETE /api/profiles/:id` - Unfollow a profile
 
-### Lists
-- `GET /api/lists` - List user's lists
-- `POST /api/lists` - Create a new list
-- `GET /api/lists/:id` - Get list details
-- `PATCH /api/lists/:id` - Update list
-- `DELETE /api/lists/:id` - Delete list (cannot delete default)
-- `POST /api/lists/:id/profiles/:profile_id` - Add profile to list
-- `DELETE /api/lists/:id/profiles/:profile_id` - Remove profile from list
+### Feeds
+- `GET /api/feeds` - List user's feeds
+- `POST /api/feeds` - Create a new feed (with customization: emoji, custom_image_url, description)
+- `GET /api/feeds/:id` - Get feed details
+- `PATCH /api/feeds/:id` - Update feed (name, color, emoji, custom_image_url, description)
+- `DELETE /api/feeds/:id` - Delete feed (cannot delete default)
+- `GET /api/feeds/:id/profiles` - Get profiles in feed
+- `POST /api/feeds/:id/profiles/:profile_id` - Add profile to feed
+- `DELETE /api/feeds/:id/profiles/:profile_id` - Remove profile from feed
+- `POST /api/feeds/:id/profiles/:profile_id/star` - Star/favorite a profile in feed
+- `DELETE /api/feeds/:id/profiles/:profile_id/star` - Unstar a profile in feed
+- `GET /api/feeds/:id/starred-profiles` - Get starred profiles for feed
+- `GET /api/feeds/:id/feed-config` - Get feed configuration
+- `POST /api/feeds/:id/feed-config` - Create feed configuration
+- `PATCH /api/feeds/:id/feed-config` - Update feed configuration
+- `DELETE /api/feeds/:id/feed-config` - Delete feed configuration
+- `GET /feed/:id.rss` - RSS feed for a feed (RSS 2.0 format)
 
-### Feed
-- `GET /api/feed` - Get unified feed (with pagination: `?page=1&limit=20&before=<timestamp>`)
+### Feed Content
+- `GET /api/feed` - Get feed items/posts (with pagination: `?page=1&limit=20&feed_id=<uuid>`)
+- `GET /api/feed/wide-mode` - Get all posts from all feeds (wide mode aggregation)
+
+### User Settings
+- `GET /api/user/home-feed` - Get user's home feed
+- `PATCH /api/user/home-feed` - Set user's home feed (body: `{ feed_id: uuid }`)
 
 ### Themes
 - `GET /api/themes` - List all active themes (`?include_inactive=true` for all)
@@ -431,7 +495,7 @@ Update this context file when:
 - [ ] Development workflow changes
 - [ ] New team member onboarding
 
-**Last Updated:** November 29, 2025
+**Last Updated:** January 2025
 
 ---
 
