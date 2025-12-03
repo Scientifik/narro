@@ -153,6 +153,9 @@ narro/
 | Scraper service | `docs/scraper-service-architecture.md` | Scraper architecture, scheduling, duplicate detection |
 | Frontend-backend connection | `docs/frontend-backend-connection.md` | API client setup, hooks, testing |
 | Auth implementation | `docs/signup-login-implementation.md` | Authentication flow, signup/login implementation |
+| Deployment guide | `docs/deployment-guide.md` | Complete production deployment setup and instructions |
+| Deployment summary | `docs/deployment-summary.md` | Overview of deployment infrastructure and components |
+| Nginx setup | `docs/nginx-setup.md` | Nginx configuration and SSL/TLS setup with Let's Encrypt |
 | Recent updates | `update.md` | Daily progress updates (check this first!) |
 | Project roadmap | `README.md` | Original project plan and session outline |
 | Backend setup | `backend/README.md` | Backend setup instructions |

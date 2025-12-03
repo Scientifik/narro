@@ -4,6 +4,77 @@ Daily updates tracking progress on the Narro project. The README contains a roug
 
 ---
 
+## December 2, 2025
+
+**What we did:**
+- **Production Deployment Infrastructure:**
+  - Created complete Docker-based deployment system for production on Vultr
+  - Built multi-stage Dockerfiles for all three services (backend, web, scraper)
+  - Created docker-compose configurations for single-server and multi-server setups
+  - Implemented zero-downtime deployment strategy with health checks
+  - Set up GitHub Actions CI/CD workflow for automated deployments
+  
+- **Code Changes:**
+  - Moved health endpoint from `/health` to `/api/health` in backend for consistency
+  - Updated web app to use `/api/health` endpoint
+  - Updated Next.js config for standalone Docker output (optimized builds)
+  - Updated all documentation references to new health endpoint
+  
+- **Docker Infrastructure:**
+  - `backend/Dockerfile` - Multi-stage Go build with pinned Alpine 3.19
+  - `web/Dockerfile` - Multi-stage Next.js build with standalone output
+  - `scraper/Dockerfile` - Python 3.11 slim image
+  - Added `.dockerignore` files for all services to optimize builds
+  
+- **Docker Compose Configuration:**
+  - `deployment/docker-compose.yml` - Single-server setup (API + Web running, scraper for cron)
+  - `deployment/docker-compose.api.yml` - API only (multi-server ready)
+  - `deployment/docker-compose.web.yml` - Web only (multi-server ready)
+  - `deployment/docker-compose.scraper.yml` - Scraper only (for on-demand cron execution)
+  - Scraper is containerized but NOT deployed as running service (runs on-demand via cron)
+  
+- **Deployment Scripts:**
+  - `deployment-scripts/deploy.sh` - Main deployment script with zero-downtime strategy
+  - `deployment-scripts/health-check.sh` - Health check utility for API and Web
+  - `deployment-scripts/cron-scraper.sh` - Scraper execution script for cron jobs
+  
+- **CI/CD Pipeline:**
+  - `.github/workflows/deploy.yml` - GitHub Actions workflow
+  - Automated deployment on push to `main` branch
+  - SSH-based deployment to Vultr instance
+  - Health check verification after deployment
+  
+- **Nginx Configuration:**
+  - `deployment/nginx/nginx.conf` - Single-server reverse proxy with SSL/TLS
+  - `deployment/nginx/nginx.lb.conf` - Load balancer config for multi-server setup
+  - Let's Encrypt/Certbot integration for SSL certificates
+  - Security headers and optimized proxy settings
+  
+- **Documentation:**
+  - `docs/deployment-guide.md` - Complete deployment setup instructions
+  - `docs/deployment-summary.md` - Overview of deployment infrastructure
+  - `docs/nginx-setup.md` - Nginx and SSL configuration guide
+  - Updated `docs/AGENT_CONTEXT.md` with deployment documentation references
+
+**Where we are:**
+- Complete production deployment infrastructure ready
+- Zero-downtime deployment strategy implemented
+- Multi-server architecture supported (can start single-server, scale later)
+- Scraper runs on-demand via cron (not as long-running service)
+- SSL/TLS configured with Let's Encrypt
+- Automated CI/CD pipeline ready for GitHub Actions
+- All deployment documentation organized in `/docs` folder
+
+**Next up:**
+- Set up Vultr instance and configure production environment
+- Add GitHub secrets for CI/CD (VULTR_HOST, VULTR_USER, VULTR_SSH_KEY, VULTR_DEPLOY_PATH)
+- Test deployment workflow
+- Configure SSL certificates with Let's Encrypt
+- Set up scraper cron job
+- Test end-to-end deployment process
+
+---
+
 ## November 29, 2025
 
 **What we did:**

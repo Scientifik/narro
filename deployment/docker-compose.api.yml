@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  narro-api:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: narro-api
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env.production
+    environment:
+      - PORT=3000
+      - NODE_ENV=production
+    volumes:
+      # Mount thumbnails directory (shared with scraper)
+      - ../thumbnails:/root/thumbnails
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - narro-network
+
+networks:
+  narro-network:
+    external: true
+    name: narro-network
+
+
+
+

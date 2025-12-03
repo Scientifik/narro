@@ -1,0 +1,99 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    name: Deploy to Vultr
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch full history for commit SHA
+
+      - name: Get commit SHA
+        id: commit
+        run: echo "sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.VULTR_SSH_KEY }}
+
+      - name: Add Vultr to known hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H ${{ secrets.VULTR_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy to Vultr
+        env:
+          VULTR_HOST: ${{ secrets.VULTR_HOST }}
+          VULTR_USER: ${{ secrets.VULTR_USER }}
+          VULTR_DEPLOY_PATH: ${{ secrets.VULTR_DEPLOY_PATH }}
+        run: |
+          ssh ${{ secrets.VULTR_USER }}@${{ secrets.VULTR_HOST }} << 'EOF'
+            set -e
+            
+            # Navigate to app directory
+            cd ${{ secrets.VULTR_DEPLOY_PATH }}/app || exit 1
+            
+            # Pull latest code
+            echo "Pulling latest code..."
+            git pull origin main
+            
+            # Navigate to deployment directory
+            cd ../deployment || exit 1
+            
+            # Copy deployment scripts if they don't exist
+            if [ ! -f "scripts/deploy.sh" ]; then
+              mkdir -p scripts
+              cp ../app/.github/deployment-scripts/*.sh scripts/
+              chmod +x scripts/*.sh
+            fi
+            
+            # Run deployment script
+            echo "Running deployment script..."
+            bash scripts/deploy.sh
+            
+            echo "Deployment completed successfully!"
+          EOF
+
+      - name: Verify deployment
+        env:
+          VULTR_HOST: ${{ secrets.VULTR_HOST }}
+          VULTR_USER: ${{ secrets.VULTR_USER }}
+        run: |
+          ssh ${{ secrets.VULTR_USER }}@${{ secrets.VULTR_HOST }} << 'EOF'
+            # Wait a moment for services to fully start
+            sleep 5
+            
+            # Run health checks
+            cd ${{ secrets.VULTR_DEPLOY_PATH }}/deployment
+            if [ -f "scripts/health-check.sh" ]; then
+              bash scripts/health-check.sh
+            fi
+          EOF
+
+      - name: Deployment success notification
+        if: success()
+        run: |
+          echo "✅ Deployment successful!"
+          echo "Commit SHA: ${{ steps.commit.outputs.sha }}"
+          # Add Slack/email notification here if desired
+
+      - name: Deployment failure notification
+        if: failure()
+        run: |
+          echo "❌ Deployment failed!"
+          echo "Commit SHA: ${{ steps.commit.outputs.sha }}"
+          # Add Slack/email notification here if desired
+          exit 1
+
+
+
+
