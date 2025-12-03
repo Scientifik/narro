@@ -11,7 +11,7 @@ Narro is a **$5/month social media curation app** that delivers algorithm-free f
 - **Mobile App** (React Native + Expo) - iOS/Android apps (scaffolded, pending implementation)
 - **Scraper Service** (Python) - Background service that scrapes social media profiles and stores content
 
-**Current Status:** Backend and web app are fully functional with authentication, feed management, feed customization, profile favoriting, RSS feed generation, and a complete UI overhaul. Scraper service is implemented and ready to run. Feed-centric navigation with Feed Management Hub, Wide Mode, and individual feed views are complete.
+**Current Status:** Backend and web app are fully functional with authentication, feed management, feed customization, profile favoriting, RSS feed generation, and a complete UI overhaul. Scraper service is implemented and ready to run. Feed-centric navigation with Feed Management Hub, Wide Mode, and individual feed views are complete. Route structure has been refactored to use cleaner paths (`/home`, `/feeds`, `/settings`, `/help`). Tutorial system infrastructure is in place for onboarding flows.
 
 ## Project Structure
 
@@ -82,11 +82,13 @@ narro/
   - CORS middleware
   - Error handling middleware
   - Thumbnail serving endpoint (`/thumbnails/*`)
+  - Thumbnail URL construction (converts relative paths to full URLs)
   - Wide mode feed aggregation (all feeds combined)
 
 - **Web App:**
   - Authentication UI (signup, login, logout)
   - Feed-centric navigation (Home, Feeds, Wide Mode, Settings, Help)
+  - Clean route structure (`/home`, `/feeds`, `/settings`, `/help` with authenticated route group)
   - Feed Management Hub (grid/list views, feed cards with customization)
   - Individual feed view pages with filtering and profile favoriting
   - Feed configuration UI (view types: list/grid/gallery, card styles, background images)
@@ -99,8 +101,9 @@ narro/
   - Feed customization (emoji, colors, custom images, descriptions)
   - Integrated profile management within feeds
   - Feed onboarding for empty feeds
+  - Tutorial system infrastructure (react-joyride integration, tutorial hooks)
   - API client with token management
-  - Protected routes
+  - Protected routes with authenticated layout
   - Auth context for state management
   - Consistent design system (removed user-selectable themes, fixed design with feed-level customization)
 
@@ -400,10 +403,13 @@ function MyComponent() {
 | Web home feed hooks | `web/lib/hooks/use-home-feed.ts` |
 | Web feed favorites hooks | `web/lib/hooks/use-feed-favorites.ts` |
 | Web wide mode hooks | `web/lib/hooks/use-wide-mode-feed.ts` |
+| Web tutorial hooks | `web/lib/hooks/use-tutorial.ts` |
 | Web types | `web/types/api.ts` |
 | Web feed components | `web/components/feed/` |
 | Web feed management components | `web/components/feeds/` |
+| Web tutorial components | `web/components/tutorial/Tutorial.tsx` |
 | Web navigation | `web/components/navigation/TopNavigation.tsx` |
+| Web authenticated routes | `web/app/(authenticated)/` |
 
 ## Database Schema Overview
 
@@ -495,7 +501,7 @@ Update this context file when:
 - [ ] Development workflow changes
 - [ ] New team member onboarding
 
-**Last Updated:** January 2025
+**Last Updated:** December 3, 2025
 
 ---
 

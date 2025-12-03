@@ -7,6 +7,50 @@ Daily updates tracking progress on the Narro project. The README contains a roug
 ## December 3, 2025
 
 **What we did:**
+- **Route Structure Refactoring (Web App):**
+  - Restructured authenticated routes from `/dashboard/*` to cleaner route structure
+  - Created new `(authenticated)` route group with proper layout
+  - Moved routes: `/dashboard` → `/home`, `/dashboard/feeds` → `/feeds`, `/dashboard/settings` → `/settings`
+  - Removed old dashboard pages and consolidated into new structure
+  - Updated navigation to use new route paths
+  - Improved route organization for better maintainability
+  
+- **Tutorial System (Web App):**
+  - Added tutorial component using react-joyride library
+  - Created `useTutorial` hook for tutorial state management
+  - Implemented tutorial completion tracking via localStorage
+  - Added tutorial infrastructure ready for onboarding flows
+  
+- **Thumbnail URL Construction (Backend):**
+  - Enhanced feed service with `constructThumbnailURL()` function
+  - Added `getAPIBaseURL()` helper to construct base URLs from environment variables
+  - Improved thumbnail URL handling for both external URLs and local storage paths
+  - Ensures proper URL construction for `/thumbnails/*` endpoint
+  - Handles relative paths from scraper and converts to full URLs
+  
+- **Code Cleanup:**
+  - Removed unused admin themes page
+  - Removed API test page
+  - Cleaned up old dashboard structure
+  - Updated package dependencies
+
+**Where we are:**
+- Cleaner route structure improves navigation and maintainability
+- Tutorial system infrastructure ready for onboarding implementation
+- Thumbnail URLs properly constructed for all feed items
+- Codebase is more organized with removed unused pages
+
+**Next up:**
+- Implement tutorial steps for user onboarding
+- Test thumbnail URL construction with real data
+- Continue refining UI/UX based on new route structure
+- Add help page content
+
+---
+
+## December 3, 2025
+
+**What we did:**
 - **Feed Configuration System (Complete Refactor):**
   - Renamed "lists" to "feeds" throughout the entire codebase for consistent terminology
   - Created database migrations to rename tables: `profile_lists` → `feeds`, `profile_list_items` → `feed_profile_items`
