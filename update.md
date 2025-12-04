@@ -4,6 +4,55 @@ Daily updates tracking progress on the Narro project. The README contains a roug
 
 ---
 
+## December 4, 2025
+
+**What we did:**
+- **Ubuntu Deployment Infrastructure:**
+  - Created `provision-ubuntu.sh` for one-time server provisioning on Ubuntu 22.04 LTS
+  - Installs Docker, Docker Compose, Nginx, and Certbot
+  - Configures Nginx with reverse proxy for API and web services
+  - Sets up `narro` user with proper permissions
+  - Creates deployment directory structure
+  - Configures firewall rules for SSH, HTTP, and HTTPS
+  
+- **Container Registry Deployment:**
+  - Created `deploy.sh` script for pulling images from container registry and deploying
+  - Supports registry authentication with credentials from `.env.production`
+  - Pulls images with specific tags (supports commit SHA tagging)
+  - Implements zero-downtime deployment with health checks
+  - Shows container logs for debugging deployment issues
+  
+- **Docker Compose Improvements:**
+  - Updated health check configuration with improved timeouts and retries
+  - Increased `start_period` from 40s to 60s for backend API
+  - Increased health check retries from 3 to 5
+  - Fixed health check command syntax for proper error handling
+  - All services configured to pull from container registry instead of building locally
+  
+- **Environment Configuration:**
+  - Created `env.prod` template with all required production environment variables
+  - Includes registry credentials, database URLs, API keys, and S3 storage configuration
+  - Documents all required and optional variables
+  
+- **Documentation:**
+  - Added comprehensive README for deployment scripts
+  - Documented provisioning and deployment workflows
+  - Included troubleshooting steps and common issues
+
+**Where we are:**
+- Complete deployment infrastructure for Ubuntu 22.04 LTS servers
+- Container registry-based deployment workflow ready
+- Health checks improved for better container startup reliability
+- All deployment files organized in `deployment/scripts/` directory
+
+**Next up:**
+- Test full deployment workflow on production server
+- Set up CI/CD pipeline for automated builds and deployments
+- Monitor container health and performance in production
+- Implement automated health check monitoring
+
+---
+
 ## December 3, 2025
 
 **What we did:**

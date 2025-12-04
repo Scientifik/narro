@@ -126,7 +126,7 @@ narro/
 
 ### ⏳ Planned
 - Stripe integration
-- Production deployment
+- CI/CD pipeline for automated builds and deployments
 - Additional platform support (YouTube, etc.)
 
 ## Key Architecture Decisions
@@ -168,6 +168,10 @@ narro/
 
 16. **Thumbnail storage:** Scraper uploads thumbnails directly to S3-compatible storage. Files are stored with path structure `{job_id}/{uuid}.jpg`. Frontend constructs full S3 URLs using `NEXT_PUBLIC_S3_BASE_URL` environment variable. Backend no longer serves thumbnails.
 
+17. **Container registry deployment:** All services are deployed using pre-built container images from a registry (e.g., Vultr Container Registry). Images are built with platform-specific tags (linux/amd64) and pulled on the server. Deployment uses Docker Compose with health checks for zero-downtime updates.
+
+18. **Ubuntu deployment:** Production deployment uses Ubuntu 22.04 LTS with Docker, Docker Compose, and Nginx. Provisioning script (`deployment/scripts/provision-ubuntu.sh`) handles one-time server setup. Deployment script (`deployment/scripts/deploy.sh`) pulls images from registry and starts containers.
+
 ## Documentation Map
 
 | Topic | Location | Description |
@@ -179,6 +183,7 @@ narro/
 | Auth implementation | `docs/signup-login-implementation.md` | Authentication flow, signup/login implementation |
 | Deployment guide | `docs/deployment-guide.md` | Complete production deployment setup and instructions |
 | Deployment summary | `docs/deployment-summary.md` | Overview of deployment infrastructure and components |
+| Deployment scripts | `deployment/scripts/README.md` | Ubuntu provisioning and container registry deployment scripts |
 | Nginx setup | `docs/nginx-setup.md` | Nginx configuration and SSL/TLS setup with Let's Encrypt |
 | Recent updates | `update.md` | Daily progress updates (check this first!) |
 | Project roadmap | `README.md` | Original project plan and session outline |
