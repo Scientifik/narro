@@ -181,6 +181,36 @@ fi
 # Enable Nginx on boot
 systemctl enable nginx
 
+# Configure firewall
+log_info "Configuring firewall..."
+if command -v ufw >/dev/null 2>&1; then
+    # Allow SSH (important - don't lock yourself out!)
+    ufw allow OpenSSH 2>/dev/null || ufw allow 22/tcp
+    
+    # Allow HTTP and HTTPS
+    ufw allow 80/tcp
+    ufw allow 443/tcp
+    
+    # Enable firewall (if not already enabled)
+    if ! ufw status | grep -q "Status: active"; then
+        log_info "Enabling UFW firewall..."
+        ufw --force enable
+    else
+        log_info "UFW firewall already enabled"
+    fi
+    
+    log_info "Firewall configured: HTTP (80) and HTTPS (443) allowed"
+elif command -v iptables >/dev/null 2>&1; then
+    # Basic iptables rules (if ufw not available)
+    log_info "Configuring iptables rules..."
+    iptables -A INPUT -p tcp --dport 22 -j ACCEPT 2>/dev/null || true
+    iptables -A INPUT -p tcp --dport 80 -j ACCEPT 2>/dev/null || true
+    iptables -A INPUT -p tcp --dport 443 -j ACCEPT 2>/dev/null || true
+    log_info "Basic iptables rules configured"
+else
+    log_warn "No firewall detected (ufw or iptables)"
+fi
+
 log_info "Provisioning complete!"
 log_warn ""
 log_warn "Next steps:"
