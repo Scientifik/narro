@@ -291,12 +291,14 @@ narro/
 
 ### 5.3 Thumbnail Storage
 
-**Storage Provider System:**
-- Pluggable storage architecture (local filesystem, S3, FTP support planned)
-- Local storage saves files to `thumbnails/{job_id}/{uuid}.jpg`
-- Backend serves thumbnails via `/thumbnails/*` endpoint
-- Feed service constructs full URLs for thumbnails (handles both external URLs and local paths)
+**S3 Storage System:**
+- Thumbnails are uploaded directly to S3-compatible storage by the scraper service
+- Files are stored with path structure `{job_id}/{uuid}.jpg` in the S3 bucket
+- Backend no longer serves thumbnails - they are accessed directly from S3
+- Frontend constructs full S3 URLs using `NEXT_PUBLIC_S3_BASE_URL` environment variable
+- Supports AWS S3, DigitalOcean Spaces, Cloudflare R2, and other S3-compatible services
 - Storage can be enabled/disabled via `STORAGE_ENABLED` environment variable
+- S3 bucket should be configured as public-read for thumbnail access
 
 ---
 

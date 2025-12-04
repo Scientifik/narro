@@ -12,9 +12,6 @@ services:
     restart: "no"
     env_file:
       - .env.production
-    volumes:
-      # Mount thumbnails directory (shared with API)
-      - ../thumbnails:/app/thumbnails
     networks:
       - narro-network
 

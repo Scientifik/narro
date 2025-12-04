@@ -1,10 +1,6 @@
-version: '3.8'
-
 services:
   narro-api:
-    build:
-      context: ../backend
-      dockerfile: Dockerfile
+    image: ${REGISTRY_URL}/narro-api:${IMAGE_TAG:-latest}
     container_name: narro-api
     restart: unless-stopped
     ports:
@@ -14,26 +10,18 @@ services:
     environment:
       - PORT=3000
       - NODE_ENV=production
-    volumes:
-      # Mount thumbnails directory (shared with scraper)
-      - ../thumbnails:/root/thumbnails
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/health", "||", "exit", "1"]
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 40s
+      retries: 5
+      start_period: 60s
     networks:
       - narro-network
+    pull_policy: always
 
   narro-web:
-    build:
-      context: ../web
-      dockerfile: Dockerfile
-      args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://narro-api:3000}
-        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
-        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+    image: ${REGISTRY_URL}/narro-web:${IMAGE_TAG:-latest}
     container_name: narro-web
     restart: unless-stopped
     ports:
@@ -54,26 +42,23 @@ services:
       start_period: 40s
     networks:
       - narro-network
+    pull_policy: always
 
   # Scraper service - defined but not started automatically
   # Run on-demand via: docker-compose run --rm narro-scraper python3 run.py
   narro-scraper:
-    build:
-      context: ../scraper
-      dockerfile: Dockerfile
+    image: ${REGISTRY_URL}/narro-scraper:${IMAGE_TAG:-latest}
     container_name: narro-scraper
     # Do not restart automatically - runs on-demand via cron
     restart: "no"
     env_file:
       - .env.production
-    volumes:
-      # Mount thumbnails directory (shared with API)
-      - ../thumbnails:/app/thumbnails
     networks:
       - narro-network
     # This service is not started by default
     profiles:
       - scraper
+    pull_policy: always
 
 networks:
   narro-network:

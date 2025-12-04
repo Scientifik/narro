@@ -81,8 +81,6 @@ narro/
   - GORM-based database layer
   - CORS middleware
   - Error handling middleware
-  - Thumbnail serving endpoint (`/thumbnails/*`)
-  - Thumbnail URL construction (converts relative paths to full URLs)
   - Wide mode feed aggregation (all feeds combined)
 
 - **Web App:**
@@ -168,7 +166,7 @@ narro/
 
 15. **Wide Mode:** Aggregated view showing all posts from all user feeds with feed attribution.
 
-16. **Thumbnail storage:** Scraper downloads and stores thumbnails locally using pluggable storage providers. Local storage saves files to `thumbnails/{job_id}/{uuid}.jpg`. Backend serves thumbnails via `/thumbnails/*` endpoint. Feed service constructs full URLs for thumbnails.
+16. **Thumbnail storage:** Scraper uploads thumbnails directly to S3-compatible storage. Files are stored with path structure `{job_id}/{uuid}.jpg`. Frontend constructs full S3 URLs using `NEXT_PUBLIC_S3_BASE_URL` environment variable. Backend no longer serves thumbnails.
 
 ## Documentation Map
 
@@ -223,14 +221,13 @@ Each project has its own `.env.example` file. Copy to `.env` (or `.env.local` fo
 - `SUPABASE_URL` - Supabase project URL
 - `SUPABASE_SERVICE_KEY` - Supabase service key
 - `PORT` - Server port (default: 3000)
-- `THUMBNAILS_DIR` - Directory for serving thumbnails (default: './thumbnails')
-- `API_BASE_URL` - Base URL for API (for constructing thumbnail URLs, optional)
 - `HOST` - Server host (default: 'localhost')
 
 **Web (.env.local):**
 - `NEXT_PUBLIC_API_URL` - Backend API URL (default: http://localhost:3030)
 - `NEXT_PUBLIC_SUPABASE_URL` - Supabase project URL
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY` - Supabase anonymous key
+- `NEXT_PUBLIC_S3_BASE_URL` - Base URL for S3 bucket (e.g., `https://bucket-name.region.digitaloceanspaces.com`)
 
 **Scraper (.env):**
 - `DATABASE_URL` - Same as backend (Supabase PostgreSQL)
@@ -241,9 +238,15 @@ Each project has its own `.env.example` file. Copy to `.env` (or `.env.local` fo
 - `SCRAPER_PROVIDER` - Provider to use: 'scraperapi', 'apify', 'auto', or 'mock' (default: 'auto')
 - `SCHEDULER_INTERVAL_MINUTES` - How often to check for profiles (default: 5, not used in single-run mode)
 - `MAX_CONCURRENT_JOBS` - Max parallel jobs (default: 10)
-- `STORAGE_PROVIDER` - Storage provider: 'local', 's3', 'ftp' (default: 'local')
-- `STORAGE_LOCAL_DIR` or `THUMBNAILS_DIR` - Directory for local storage (default: './thumbnails')
+- `STORAGE_PROVIDER` - Storage provider: 's3' (default: 's3')
 - `STORAGE_ENABLED` - Enable/disable thumbnail storage (default: 'true')
+- `STORAGE_S3_BUCKET` - S3 bucket name (required)
+- `STORAGE_S3_REGION` - S3 region (required, e.g., 'us-east-1', 'nyc3')
+- `STORAGE_S3_ENDPOINT` - Optional custom endpoint for S3-compatible services
+- `STORAGE_S3_ACCESS_KEY_ID` - AWS access key or equivalent (required)
+- `STORAGE_S3_SECRET_ACCESS_KEY` - AWS secret key or equivalent (required)
+- `STORAGE_S3_USE_SSL` - Use SSL (default: 'true')
+- `STORAGE_S3_PUBLIC_BASE_URL` - Optional public base URL for constructing thumbnail URLs
 
 ### Database Migrations
 
@@ -363,6 +366,7 @@ function MyComponent() {
 - **Authentication:** Uses Supabase Auth, JWT tokens stored in localStorage (web) or SecureStore (mobile)
 - **CORS:** Backend CORS middleware allows all origins in development (restrict in production)
 - **Design system:** Removed user-selectable themes; using consistent fixed design with feed-level customization
+- **Thumbnail storage:** Thumbnails stored in S3-compatible storage, frontend constructs URLs using `NEXT_PUBLIC_S3_BASE_URL`
 
 ## Quick Reference: File Locations
 
@@ -489,7 +493,7 @@ function MyComponent() {
 - `DELETE /api/admin/themes/:id` - Delete theme (admin)
 
 ### Thumbnails
-- `GET /thumbnails/*filepath` - Serve thumbnail files (public, with security checks)
+- Thumbnails are served directly from S3, not through the backend API
 
 ## When to Update This File
 

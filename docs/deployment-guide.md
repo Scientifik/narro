@@ -48,7 +48,7 @@ sudo chmod +x /usr/local/bin/docker-compose
 
 ```bash
 # Create directories
-mkdir -p /home/narro/{app,deployment/{scripts,logs,nginx},thumbnails}
+mkdir -p /home/narro/{app,deployment/{scripts,logs,nginx}}
 
 # Clone repository
 cd /home/narro/app
@@ -90,8 +90,14 @@ SCRAPING_API_URL=https://api.scraperapi.com
 APIFY_API_TOKEN=your-apify-token
 APIFY_API_URL=https://api.apify.com/v2
 
-# Thumbnails
-THUMBNAILS_DIR=/home/narro/thumbnails
+# S3 Storage (for thumbnails)
+STORAGE_S3_BUCKET=your-bucket-name
+STORAGE_S3_REGION=us-east-1
+STORAGE_S3_ENDPOINT=
+STORAGE_S3_ACCESS_KEY_ID=your-access-key-id
+STORAGE_S3_SECRET_ACCESS_KEY=your-secret-access-key
+STORAGE_S3_USE_SSL=true
+STORAGE_S3_PUBLIC_BASE_URL=https://your-bucket-name.region.digitaloceanspaces.com
 
 # Optional: Stripe, Sentry, etc.
 STRIPE_SECRET_KEY=sk_live_...
@@ -270,7 +276,7 @@ bash scripts/deploy.sh
 ## Backup
 
 - Database: Handled by Supabase (automatic backups)
-- Thumbnails: Consider backing up `/home/narro/thumbnails` periodically
+- Thumbnails: Stored in S3 - configure S3 bucket versioning and lifecycle policies for backups
 - Configuration: Backup `.env.production` securely (not in git)
 
 ## Monitoring
