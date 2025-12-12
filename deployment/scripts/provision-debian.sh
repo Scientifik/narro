@@ -221,18 +221,27 @@ generate_nginx_config() {
     local server_type=$2
     local domain=$3
 
-    cat > "$config_file" << 'NGINX_EOF'
-# Nginx configuration for Narro
-# Domain: {DOMAIN}
-# Server Type: {SERVER_TYPE}
+    if [ "$server_type" = "frontend" ]; then
+        cat > "$config_file" << NGINX_EOF
+# Nginx configuration for Narro Frontend
+# Domain: $domain
+# Server Type: frontend
 
-{UPSTREAMS}
+upstream api {
+    server api.narro.info:443;  # Backend API server
+    keepalive 32;
+}
+
+upstream web {
+    server localhost:3001;  # Local Next.js web application
+    keepalive 32;
+}
 
 # HTTP server - serves content initially, Certbot will add HTTPS and redirect
 server {
     listen 80;
     listen [::]:80;
-    server_name {SERVER_NAMES};
+    server_name $domain www.$domain;
 
     # Allow Let's Encrypt challenges
     location /.well-known/acme-challenge/ {
@@ -244,37 +253,7 @@ server {
 
     client_max_body_size 10M;
 
-    {LOCATIONS}
-
-    location /api/health {
-        proxy_pass http://api/api/health;
-        access_log off;
-    }
-}
-
-# HTTPS server will be added by Certbot when you run: certbot --nginx -d {DOMAIN}
-NGINX_EOF
-
-    # Read the template
-    local nginx_config=$(cat "$config_file")
-
-    # Replace placeholders
-    nginx_config="${nginx_config//{DOMAIN}/$domain}"
-    nginx_config="${nginx_config//{SERVER_TYPE}/$server_type}"
-
-    # Set up server-specific configuration
-    if [ "$server_type" = "frontend" ]; then
-        local upstreams="upstream api {
-    server api.narro.info:443;  # Backend API server
-    keepalive 32;
-}
-
-upstream web {
-    server localhost:3001;  # Local Next.js web application
-    keepalive 32;
-}"
-        local server_names="$domain www.$domain"
-        local locations="# API routes (proxy to backend)
+    # API routes (proxy to backend)
     location /api/ {
         proxy_pass https://api;
         proxy_http_version 1.1;
@@ -299,14 +278,45 @@ upstream web {
         proxy_set_header X-Forwarded-Proto \$scheme;
         proxy_cache_bypass \$http_upgrade;
         proxy_read_timeout 60s;
-    }"
+    }
+
+    location /api/health {
+        proxy_pass http://api/api/health;
+        access_log off;
+    }
+}
+
+# HTTPS server will be added by Certbot when you run: certbot --nginx -d $domain
+NGINX_EOF
+
     elif [ "$server_type" = "backend" ]; then
-        local upstreams="upstream api {
+        cat > "$config_file" << NGINX_EOF
+# Nginx configuration for Narro API Backend
+# Domain: $domain
+# Server Type: backend
+
+upstream api {
     server localhost:3000;  # Local Go API server
     keepalive 32;
-}"
-        local server_names="$domain"
-        local locations="# API routes
+}
+
+# HTTP server - serves content initially, Certbot will add HTTPS and redirect
+server {
+    listen 80;
+    listen [::]:80;
+    server_name $domain;
+
+    # Allow Let's Encrypt challenges
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    access_log /var/log/nginx/narro-access.log;
+    error_log /var/log/nginx/narro-error.log;
+
+    client_max_body_size 10M;
+
+    # API routes
     location /api/ {
         proxy_pass http://api;
         proxy_http_version 1.1;
@@ -317,19 +327,21 @@ upstream web {
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
         proxy_cache_bypass \$http_upgrade;
-    }"
+    }
+
+    location /api/health {
+        proxy_pass http://api/api/health;
+        access_log off;
+    }
+}
+
+# HTTPS server will be added by Certbot when you run: certbot --nginx -d $domain
+NGINX_EOF
+
     else
         log_error "Unknown server type: $server_type"
         return 1
     fi
-
-    # Replace server-specific placeholders
-    nginx_config="${nginx_config//{UPSTREAMS}/$upstreams}"
-    nginx_config="${nginx_config//{SERVER_NAMES}/$server_names}"
-    nginx_config="${nginx_config//{LOCATIONS}/$locations}"
-
-    # Write final config
-    echo "$nginx_config" > "$config_file"
 }
 
 # Create Nginx configuration
