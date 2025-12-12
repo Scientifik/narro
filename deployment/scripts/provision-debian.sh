@@ -1,7 +1,8 @@
 #!/bin/bash
-# Ubuntu 22.04 LTS Server Provisioning Script for Narro
+# Debian/Ubuntu Server Provisioning Script for Narro
 # One-time setup: Installs Docker, Nginx, and basic configuration
-# Run as root on a fresh Ubuntu 22.04 installation
+# Run as root on a fresh Debian 12+ or Ubuntu 22.04 installation
+# Usage: sudo bash provision-debian.sh [frontend|backend|single]
 
 set -e
 
@@ -22,11 +23,28 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 # Configuration
-DOMAIN="${DOMAIN:-alpha.narro.info}"
+SERVER_TYPE="${1:-single}"  # frontend, backend, or single (default)
+
+# Validate server type
+if [[ ! "$SERVER_TYPE" =~ ^(frontend|backend|single)$ ]]; then
+    log_error "Invalid server type: $SERVER_TYPE"
+    log_error "Usage: sudo bash provision-debian.sh [frontend|backend|single]"
+    exit 1
+fi
+
+# Set DOMAIN defaults based on server type
+if [ "$SERVER_TYPE" = "frontend" ]; then
+    DOMAIN="${DOMAIN:-narro.info}"
+elif [ "$SERVER_TYPE" = "backend" ]; then
+    DOMAIN="${DOMAIN:-api.narro.info}"
+else
+    DOMAIN="${DOMAIN:-alpha.narro.info}"
+fi
+
 NARRO_USER="${NARRO_USER:-narro}"
 NARRO_HOME="/home/${NARRO_USER}"
 
-log_info "Provisioning Ubuntu 22.04 LTS server for Narro..."
+log_info "Provisioning Debian/Ubuntu server for Narro (Server Type: $SERVER_TYPE)..."
 log_info "Domain: ${DOMAIN}"
 
 # Update system
@@ -95,8 +113,122 @@ chmod 700 "${NARRO_HOME}/deployment"
 
 # Create Nginx configuration
 log_info "Configuring Nginx..."
-cat > /etc/nginx/sites-available/narro << NGINX_EOF
-# Nginx configuration for Narro
+
+# Generate appropriate nginx config based on server type
+if [ "$SERVER_TYPE" = "frontend" ]; then
+    log_info "Configuring Nginx for FRONTEND server"
+    cat > /etc/nginx/sites-available/narro << NGINX_EOF
+# Nginx configuration for Narro Frontend
+# Domain: ${DOMAIN}
+
+upstream api {
+    server api.narro.info:443;  # Backend API server
+    keepalive 32;
+}
+
+upstream web {
+    server localhost:3001;  # Local Next.js web application
+    keepalive 32;
+}
+
+# HTTP server - serves content initially, Certbot will add HTTPS and redirect
+server {
+    listen 80;
+    listen [::]:80;
+    server_name ${DOMAIN} www.${DOMAIN};
+
+    # Allow Let's Encrypt challenges
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    access_log /var/log/nginx/narro-access.log;
+    error_log /var/log/nginx/narro-error.log;
+
+    client_max_body_size 10M;
+
+    # API routes (proxy to backend)
+    location /api/ {
+        proxy_pass https://api;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_cache_bypass \$http_upgrade;
+    }
+
+    # Web app (local)
+    location / {
+        proxy_pass http://web;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_cache_bypass \$http_upgrade;
+        proxy_read_timeout 60s;
+    }
+}
+
+# HTTPS server will be added by Certbot when you run: certbot --nginx -d ${DOMAIN}
+NGINX_EOF
+elif [ "$SERVER_TYPE" = "backend" ]; then
+    log_info "Configuring Nginx for BACKEND server"
+    cat > /etc/nginx/sites-available/narro << NGINX_EOF
+# Nginx configuration for Narro API Backend
+# Domain: ${DOMAIN}
+
+upstream api {
+    server localhost:3000;  # Local Go API server
+    keepalive 32;
+}
+
+# HTTP server - serves content initially, Certbot will add HTTPS and redirect
+server {
+    listen 80;
+    listen [::]:80;
+    server_name ${DOMAIN};
+
+    # Allow Let's Encrypt challenges
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    access_log /var/log/nginx/narro-access.log;
+    error_log /var/log/nginx/narro-error.log;
+
+    client_max_body_size 10M;
+
+    # API routes
+    location /api/ {
+        proxy_pass http://api;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_cache_bypass \$http_upgrade;
+    }
+
+    location /api/health {
+        proxy_pass http://api/api/health;
+        access_log off;
+    }
+}
+
+# HTTPS server will be added by Certbot when you run: certbot --nginx -d ${DOMAIN}
+NGINX_EOF
+else
+    log_info "Configuring Nginx for SINGLE server (default)"
+    cat > /etc/nginx/sites-available/narro << NGINX_EOF
+# Nginx configuration for Narro (Single Server)
 # Domain: ${DOMAIN}
 
 upstream api {
@@ -138,7 +270,6 @@ server {
         proxy_cache_bypass \$http_upgrade;
     }
 
-
     # Web app
     location / {
         proxy_pass http://web;
@@ -161,6 +292,7 @@ server {
 
 # HTTPS server will be added by Certbot when you run: certbot --nginx -d ${DOMAIN}
 NGINX_EOF
+fi
 
 # Enable site
 ln -sf /etc/nginx/sites-available/narro /etc/nginx/sites-enabled/narro

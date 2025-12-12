@@ -2,24 +2,29 @@
 
 ## Files
 
-- `scripts/provision-ubuntu.sh` - One-time server provisioning script for Ubuntu 22.04 LTS
-- `scripts/deploy.sh` - Deployment script that pulls images from registry and starts containers
-- `scripts/env.prod` - Example production environment file template
+- `scripts/provision-debian.sh` - One-time server provisioning script for Debian/Ubuntu (supports frontend, backend, or single-server modes)
+- `scripts/deploy-web.sh` - Deployment script for frontend (web) server - pulls narro-web image and starts container
+- `scripts/deploy-api.sh` - Deployment script for backend (API) server - pulls narro-api image and starts container
+- `scripts/env.prod` - Example production environment file template (legacy, for single-server)
+- `scripts/env.frontend.example` - Example environment file for frontend servers
+- `scripts/env.backend.example` - Example environment file for backend servers
 
-## Quick Start
+## Quick Start - Single Server (Default)
 
 ### 1. Provision Server (One-time, as root)
 
 ```bash
-# On your Ubuntu 22.04 server, as root:
-DOMAIN=alpha.narro.info bash /path/to/scripts/provision-ubuntu.sh
+# On your Debian/Ubuntu server, as root:
+DOMAIN=narro.info bash provision-debian.sh
+# Or specify server type explicitly:
+DOMAIN=narro.info bash provision-debian.sh single
 ```
 
 This will:
 - Install Docker and Docker Compose
 - Install and configure Nginx
 - Create narro user and directory structure
-- Set up basic Nginx configuration
+- Set up Nginx configuration for both API and web
 
 ### 2. Configure Environment (as narro user)
 
@@ -44,25 +49,167 @@ chmod 600 .env.production
 ### 3. Get SSL Certificate (as root)
 
 ```bash
-certbot --nginx -d alpha.narro.info
+sudo certbot --nginx -d narro.info -d www.narro.info
 ```
-
-This will automatically:
-- Obtain SSL certificates
-- Create HTTPS server block
-- Configure redirects from HTTP to HTTPS
 
 ### 4. Deploy (as narro user)
 
+For single-server deployments, both services are included in `docker-compose.yml`. You'll need to either:
+
+**Option A:** Use both deploy scripts sequentially
 ```bash
 cd ~/deployment
-./scripts/deploy.sh
+./scripts/deploy-web.sh   # Deploy web service
+./scripts/deploy-api.sh   # Deploy API service
 ```
 
-This will:
-- Pull images from registry
-- Start containers
-- Perform health checks
+**Option B:** Use docker-compose directly (if you prefer not to use scripts)
+```bash
+cd ~/deployment
+docker compose pull
+docker compose up -d
+```
+
+---
+
+## Multi-Host Deployment (Frontend + Backend)
+
+For production deployments with separated frontend and backend servers on a private network.
+
+### Architecture Overview
+
+```
+┌─────────────────────────────┐
+│   Frontend Server           │
+│  Domain: narro.info         │
+│  ┌─────────────────────┐    │
+│  │  Nginx              │    │ :80/:443
+│  │  - Serves web app   │    ├─────────► Internet
+│  │  - Proxies /api/*   │    │
+│  │    to backend       │    │
+│  │  ┌─────────────────┐│    │
+│  │  │ narro-web       ││    │
+│  │  │ (Next.js)       ││    │
+│  │  └─────────────────┘│    │
+│  └─────────────────────┘    │
+└─────────────────────────────┘
+          ↕ (Private Network)
+┌─────────────────────────────┐
+│   Backend Server            │
+│  Domain: api.narro.info     │
+│  ┌─────────────────────┐    │
+│  │  Nginx              │    │ :80/:443
+│  │  - Proxies /api/*   │    ├─────────► Internet
+│  │    to API server    │    │
+│  │  ┌─────────────────┐│    │
+│  │  │ narro-api       ││    │
+│  │  │ (Go REST API)   ││    │
+│  │  └─────────────────┘│    │
+│  └─────────────────────┘    │
+└─────────────────────────────┘
+```
+
+### Prerequisites
+
+- Two Debian/Ubuntu 22.04 LTS servers
+- Both servers on a private network (VPC/VPN)
+- DNS configured:
+  - `narro.info` → Frontend server IP
+  - `api.narro.info` → Backend server IP (can be private IP within VPC)
+- Each server has public internet access for Docker pulls
+
+### Provisioning Steps
+
+#### Frontend Server
+
+```bash
+# 1. As root, provision frontend server
+sudo DOMAIN=narro.info bash provision-debian.sh frontend
+
+# 2. Switch to narro user and setup deployment
+su - narro
+cd ~/deployment
+
+# 3. Copy frontend docker-compose
+cp /path/to/docker-compose.web.yml .
+
+# 4. Copy frontend environment template
+cp ../scripts/env.frontend.example .env.production
+
+# 5. Edit with your registry credentials and Supabase config
+# IMPORTANT: Set NEXT_PUBLIC_API_URL=https://api.narro.info
+nano .env.production
+chmod 600 .env.production
+
+# 6. As root, get SSL certificate
+sudo certbot --nginx -d narro.info -d www.narro.info
+
+# 7. Deploy frontend
+./scripts/deploy-web.sh
+```
+
+#### Backend Server
+
+```bash
+# 1. As root, provision backend server
+sudo DOMAIN=api.narro.info bash provision-debian.sh backend
+
+# 2. Switch to narro user and setup deployment
+su - narro
+cd ~/deployment
+
+# 3. Copy backend docker-compose
+cp /path/to/docker-compose.api.yml .
+
+# 4. Copy backend environment template
+cp ../scripts/env.backend.example .env.production
+
+# 5. Edit with your registry credentials, database, and Supabase config
+# REQUIRED: DATABASE_URL, SUPABASE_SERVICE_KEY
+nano .env.production
+chmod 600 .env.production
+
+# 6. As root, get SSL certificate
+sudo certbot --nginx -d api.narro.info
+
+# 7. Deploy backend
+./scripts/deploy-api.sh
+```
+
+### Testing Multi-Host Connectivity
+
+After both servers are deployed:
+
+```bash
+# From frontend server, test API connectivity:
+curl -v https://api.narro.info/api/health
+
+# From local machine, test both services:
+curl -v https://narro.info              # Frontend
+curl -v https://api.narro.info/api/health  # Backend API
+```
+
+### Troubleshooting Multi-Host
+
+**Frontend can't reach backend API:**
+- Verify DNS: `namerserver api.narro.info` should resolve to backend IP
+- Check firewall: Backend port 443 must be accessible from frontend
+- Verify backend is running: SSH to backend and run `docker compose ps`
+- Check logs: `docker compose -f docker-compose.api.yml logs -f narro-api`
+
+**SSL certificate issues:**
+- Ensure backend server has outbound HTTP access for Certbot Let's Encrypt challenges
+- Both domains must have valid DNS records before running certbot
+
+---
+
+## Single File Reference
+
+| Mode | Provision | Deploy | Docker Compose | Environment |
+|------|-----------|--------|----------------|-------------|
+| Frontend | `provision-debian.sh frontend` | `scripts/deploy-web.sh` | `docker-compose.web.yml` | `env.frontend.example` |
+| Backend | `provision-debian.sh backend` | `scripts/deploy-api.sh` | `docker-compose.api.yml` | `env.backend.example` |
+| Single | `provision-debian.sh` (or `provision-debian.sh single`) | `scripts/deploy-web.sh` + `scripts/deploy-api.sh` | `docker-compose.yml` | `env.prod` |
 
 ## Directory Structure
 

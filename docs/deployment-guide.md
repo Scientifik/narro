@@ -9,17 +9,18 @@ This guide covers the complete setup and deployment process for Narro production
 ```
 deployment/
 ├── docker-compose.yml              # Single-server setup (API + Web)
-├── docker-compose.api.yml          # API only (multi-server)
-├── docker-compose.web.yml          # Web only (multi-server)
-├── docker-compose.scraper.yml      # Scraper only (for cron)
+├── docker-compose.api.yml          # Backend API container only
+├── docker-compose.web.yml          # Frontend web container only
 ├── .env.production                 # Production secrets (NOT in git, create manually)
 ├── nginx/
-│   ├── nginx.conf                  # Single-server Nginx config
-│   ├── nginx.lb.conf               # Load balancer config (multi-server)
-└── scripts/                        # Deployment scripts (copied from .github/deployment-scripts/)
-    ├── deploy.sh
-    ├── health-check.sh
-    └── cron-scraper.sh
+│   ├── nginx.api.conf              # Backend API Nginx config
+│   ├── nginx.frontend.conf         # Frontend Nginx config (multi-server)
+└── scripts/                        # Deployment scripts
+    ├── provision-debian.sh         # Server provisioning script
+    ├── deploy.sh                   # Container deployment script
+    ├── env.prod                    # Environment template (single-server)
+    ├── env.frontend.example        # Environment template (frontend)
+    └── env.backend.example         # Environment template (backend)
 ```
 
 ## Prerequisites
@@ -134,6 +135,178 @@ crontab -e
 0 */6 * * * /home/narro/deployment/scripts/cron-scraper.sh >> /home/narro/deployment/logs/cron.log 2>&1
 ```
 
+---
+
+## Multi-Host Deployment (Frontend + Backend Separation)
+
+For production environments with dedicated frontend and backend servers running on a private network, use this section instead of the single-server setup above.
+
+### Architecture Overview
+
+**Frontend Server** (`narro.info`)
+- Runs: Nginx (reverse proxy) + Next.js Web Container
+- Purpose: Serves web UI, proxies API requests to backend
+- Ports: 80/443 (public), connects to backend via private network
+
+**Backend Server** (`api.narro.info`)
+- Runs: Nginx (reverse proxy) + Go API Container
+- Purpose: Serves REST API, connects to database
+- Ports: 80/443 (on private network or public with firewall)
+
+**Network**: Both servers communicate over a private network (VPC, VPN, or private LAN).
+
+### Prerequisites for Multi-Host
+
+1. **Two Debian/Ubuntu 22.04 LTS servers**
+2. **Private network connection between servers** (Vultr VPC, AWS VPC, etc.)
+3. **DNS Configuration**:
+   - `narro.info` → Frontend Server IP (public)
+   - `api.narro.info` → Backend Server IP (public or private VPC IP)
+4. **Firewall Rules**:
+   - Frontend: Allow 80, 443 from anywhere
+   - Backend: Allow 80, 443 from Frontend server IP (or entire VPC)
+5. **Database Access**: Backend server must reach Supabase/PostgreSQL
+
+### Multi-Host Provisioning
+
+#### Step 1: Provision Frontend Server
+
+On the frontend server, as root:
+
+```bash
+# Download provisioning script
+cd /tmp
+curl -O https://your-repo-url/deployment/scripts/provision-debian.sh
+chmod +x provision-debian.sh
+
+# Provision for frontend role
+sudo DOMAIN=narro.info bash provision-debian.sh frontend
+```
+
+Then as the `narro` user:
+
+```bash
+su - narro
+cd ~/deployment
+
+# Copy docker-compose file for web container
+cp /path/to/docker-compose.web.yml .
+
+# Copy frontend environment template
+cp /path/to/env.frontend.example .env.production
+
+# Edit environment - CRITICAL: Set API URL to backend
+nano .env.production
+# Set: NEXT_PUBLIC_API_URL=https://api.narro.info
+
+chmod 600 .env.production
+```
+
+As root, setup SSL:
+
+```bash
+sudo certbot --nginx -d narro.info -d www.narro.info
+```
+
+Then deploy:
+
+```bash
+su - narro
+cd ~/deployment
+./deploy.sh frontend
+```
+
+#### Step 2: Provision Backend Server
+
+On the backend server, as root:
+
+```bash
+# Download provisioning script
+cd /tmp
+curl -O https://your-repo-url/deployment/scripts/provision-debian.sh
+chmod +x provision-debian.sh
+
+# Provision for backend role
+sudo DOMAIN=api.narro.info bash provision-debian.sh backend
+```
+
+Then as the `narro` user:
+
+```bash
+su - narro
+cd ~/deployment
+
+# Copy docker-compose file for API container
+cp /path/to/docker-compose.api.yml .
+
+# Copy backend environment template
+cp /path/to/env.backend.example .env.production
+
+# Edit environment - CRITICAL: Set database and Supabase config
+nano .env.production
+# REQUIRED:
+# - DATABASE_URL=postgresql://...
+# - SUPABASE_URL=https://...
+# - SUPABASE_SERVICE_KEY=...
+
+chmod 600 .env.production
+```
+
+As root, setup SSL:
+
+```bash
+sudo certbot --nginx -d api.narro.info
+```
+
+Then deploy:
+
+```bash
+su - narro
+cd ~/deployment
+./deploy.sh backend
+```
+
+### Multi-Host Testing
+
+After both servers are running:
+
+```bash
+# Test frontend (from your local machine)
+curl -v https://narro.info
+
+# Test backend API (from your local machine)
+curl -v https://api.narro.info/api/health
+
+# Test from frontend server to backend
+ssh narro@frontend-ip
+curl -v https://api.narro.info/api/health
+
+# Check logs
+docker compose -f docker-compose.web.yml logs -f narro-web   # Frontend server
+docker compose -f docker-compose.api.yml logs -f narro-api   # Backend server
+```
+
+### Multi-Host Troubleshooting
+
+**Frontend shows "Failed to fetch"**: API not reachable
+- Check: `curl https://api.narro.info/api/health` from frontend server
+- Verify DNS: `nslookup api.narro.info`
+- Check firewall: Backend port 443 open to frontend
+- Check logs: `docker compose logs narro-web`
+
+**Backend unreachable**: Database or Supabase connection
+- Verify `DATABASE_URL` in `.env.production`
+- Check database connectivity: `psql $DATABASE_URL -c "SELECT 1"`
+- Check logs: `docker compose logs narro-api`
+- Verify Supabase credentials in `.env.production`
+
+**SSL certificate issues**:
+- Ensure both domains resolve correctly: `nslookup narro.info` and `nslookup api.narro.info`
+- Check Certbot logs: `sudo tail -f /var/log/letsencrypt/letsencrypt.log`
+- Verify ports 80/443 are accessible for Certbot challenges
+
+---
+
 ## Deployment
 
 ### Manual Deployment
@@ -143,61 +316,153 @@ cd /home/narro/deployment
 bash scripts/deploy.sh
 ```
 
-### Automated Deployment (Gitea Actions)
+### Automated Deployment (Separate Repository CI/CD)
 
-Deployment is automatically triggered on every push to `main` branch via Gitea Actions.
+With separate **web** and **backend** repositories, each has its own Gitea Actions workflow that independently builds Docker images and deploys to their respective servers.
 
-The workflow (`.gitea/workflows/build-and-deploy.yml`) will:
-1. Build Docker images for backend and web services
-2. Tag images with both `latest` and commit SHA
-3. Push images to Vultr Container Registry
-4. SSH to Vultr server and run `deploy.sh` to pull and deploy new images
+#### Web Repository Workflow
 
-**Required Gitea Secrets:**
+**Location:** `web/.gitea/workflows/build-and-deploy.yml`
 
-Configure these in your Gitea repository settings (Settings → Secrets):
+**Triggers:** Push to `main` branch
 
-**Container Registry:**
-- `REGISTRY_URL` - Vultr registry URL (e.g., `ord.vultrcr.com/narro`)
+**Workflow:**
+1. Checks out code
+2. Sets up Docker Buildx
+3. Logs into container registry
+4. Builds and pushes `narro-web` image (with tags: `latest` and commit SHA)
+5. SSHes to `VULTR_FRONTEND_HOST`
+6. Runs `bash scripts/deploy.sh frontend` to pull and deploy web container
+
+**Required Secrets (Web Repository):**
+- `REGISTRY_URL` - Container registry URL (e.g., `ord.vultrcr.com/narro`)
 - `REGISTRY_USER` - Registry username
 - `REGISTRY_PASSWORD` - Registry password
-
-**Deployment:**
-- `VULTR_HOST` - IP address or hostname of Vultr instance
+- `VULTR_FRONTEND_HOST` - Frontend server IP/hostname
 - `VULTR_USER` - SSH username (usually `narro`)
-- `VULTR_SSH_KEY` - Private SSH key for authentication (full private key content)
+- `VULTR_SSH_KEY` - Private SSH key for authentication
 - `VULTR_DEPLOY_PATH` - Deployment directory (e.g., `/home/narro/deployment`)
 
-**Optional (for web build):**
-- `NEXT_PUBLIC_API_URL` - API URL for frontend
+**Optional Secrets (Web Repository):**
+- `NEXT_PUBLIC_API_URL` - API URL for frontend (defaults to `https://api.narro.info`)
 - `NEXT_PUBLIC_SUPABASE_URL` - Supabase project URL
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY` - Supabase anonymous key
-- `NEXT_PUBLIC_SENTRY_DSN` - Sentry DSN for frontend (optional)
-- `SENTRY_ORG` - Sentry organization (optional, for source maps)
-- `SENTRY_PROJECT` - Sentry project name (optional)
-- `SENTRY_AUTH_TOKEN` - Sentry auth token (optional, for source maps)
+- `NEXT_PUBLIC_SENTRY_DSN` - Sentry DSN for frontend
+- `SENTRY_ORG` - Sentry organization
+- `SENTRY_PROJECT` - Sentry project name
+- `SENTRY_AUTH_TOKEN` - Sentry auth token
 
-**Setting up Gitea Actions:**
+#### Backend Repository Workflow
 
-1. **Configure Gitea Actions runners:**
-   - Ensure Gitea Actions is enabled in your Gitea instance
-   - Set up at least one runner (self-hosted or cloud)
-   - Runners should have Docker installed and access to build images
+**Location:** `backend/.gitea/workflows/build-and-deploy.yml`
 
-2. **Add secrets to repository:**
+**Triggers:** Push to `main` branch
+
+**Workflow:**
+1. Checks out code
+2. Sets up Docker Buildx
+3. Logs into container registry
+4. Builds and pushes `narro-api` image (with tags: `latest` and commit SHA)
+5. SSHes to `VULTR_BACKEND_HOST`
+6. Runs `bash scripts/deploy.sh backend` to pull and deploy API container
+
+**Required Secrets (Backend Repository):**
+- `REGISTRY_URL` - Container registry URL (e.g., `ord.vultrcr.com/narro`)
+- `REGISTRY_USER` - Registry username
+- `REGISTRY_PASSWORD` - Registry password
+- `VULTR_BACKEND_HOST` - Backend server IP/hostname
+- `VULTR_USER` - SSH username (usually `narro`)
+- `VULTR_SSH_KEY` - Private SSH key for authentication
+- `VULTR_DEPLOY_PATH` - Deployment directory (e.g., `/home/narro/deployment`)
+
+#### Deployment Flow
+
+```
+┌─────────────────────────────┐
+│  Web Repo Push to Main      │
+└──────────────┬──────────────┘
+               ↓
+       Build narro-web
+               ↓
+    Push to Registry
+               ↓
+    SSH to FRONTEND
+    deploy.sh frontend
+               ↓
+    FRONTEND Server Updates
+
+┌─────────────────────────────┐
+│ Backend Repo Push to Main   │
+└──────────────┬──────────────┘
+               ↓
+       Build narro-api
+               ↓
+    Push to Registry
+               ↓
+    SSH to BACKEND
+    deploy.sh backend
+               ↓
+    BACKEND Server Updates
+```
+
+**Key Benefits:**
+- **Independent deployments** - Web and backend deploy separately
+- **Concurrent updates** - Both can deploy simultaneously if both repos change
+- **Flexible updates** - Update only what changed (frontend only, backend only, or both)
+- **Consistent deployment** - Both use the same `deploy.sh` script
+
+#### Setting up Gitea Actions
+
+1. **Ensure Gitea Actions is enabled** on your Gitea instance
+2. **Configure Gitea Actions runners** (self-hosted or cloud) with Docker installed
+3. **Add secrets to each repository:**
    - Go to repository Settings → Secrets
-   - Add each required secret listed above
+   - Add required secrets listed above for each repo
    - For `VULTR_SSH_KEY`, paste the full private key content (including `-----BEGIN` and `-----END` lines)
-
-3. **Verify workflow:**
-   - Push to `main` branch to trigger workflow
+4. **Deploy servers must:**
+   - Have `deploy.sh` and `docker-compose` files in `$VULTR_DEPLOY_PATH`
+   - Have deployment scripts provisioned with `provision-debian.sh` (frontend or backend)
+5. **Verify workflows:**
+   - Push to `main` branch of web repo → frontend updates
+   - Push to `main` branch of backend repo → backend updates
    - Check Actions tab in Gitea to view workflow runs
-   - Workflow will build images, push to registry, and deploy automatically
 
-**Image Tagging:**
-- Images are tagged with both `latest` and commit SHA (7 characters)
-- Example: `ord.vultrcr.com/narro/narro-api:latest` and `ord.vultrcr.com/narro/narro-api:a1b2c3d`
-- The `deploy.sh` script uses `IMAGE_TAG` environment variable (set to commit SHA by workflow)
+#### Image Tagging
+
+Images are tagged with both `latest` and commit SHA:
+- `ord.vultrcr.com/narro/narro-web:latest` and `ord.vultrcr.com/narro/narro-web:a1b2c3d`
+- `ord.vultrcr.com/narro/narro-api:latest` and `ord.vultrcr.com/narro/narro-api:f9e8d7c`
+
+The `deploy.sh` script uses the `IMAGE_TAG` environment variable (set to commit SHA by workflow) for pinpoint deployments of specific versions.
+
+#### Troubleshooting CI/CD
+
+**Workflow fails: "SSH host key verification failed"**
+- Verify `VULTR_FRONTEND_HOST` or `VULTR_BACKEND_HOST` is correct and accessible
+- Verify `VULTR_SSH_KEY` is properly formatted (includes BEGIN/END lines)
+- Test SSH manually from local machine
+
+**Workflow fails: "Image not found"**
+- Verify registry secrets are correct
+- Check that image was actually pushed to registry
+- Verify Docker build step completed successfully
+
+**Deployment succeeds but container won't start**
+- SSH to server and check logs:
+  ```bash
+  # Frontend
+  docker compose -f docker-compose.web.yml logs -f narro-web
+  # Backend
+  docker compose -f docker-compose.api.yml logs -f narro-api
+  ```
+- Verify `.env.production` has all required variables
+
+**Frontend can't reach API after deployment**
+- Verify `NEXT_PUBLIC_API_URL` secret is set to correct backend URL
+- From frontend server, test connectivity:
+  ```bash
+  curl -v https://api.narro.info/api/health
+  ```
 
 ## Service Management
 
