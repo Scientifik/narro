@@ -2,9 +2,7 @@ version: '3.8'
 
 services:
   narro-api:
-    build:
-      context: ../backend
-      dockerfile: Dockerfile
+    image: ${REGISTRY_URL}/narro-api:${IMAGE_TAG:-latest}
     container_name: narro-api
     restart: unless-stopped
     ports:
