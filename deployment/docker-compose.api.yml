@@ -6,7 +6,7 @@ services:
     container_name: narro-api
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     env_file:
       - .env.production
     environment:
@@ -18,13 +18,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
-    networks:
-      - narro-network
-
-networks:
-  narro-network:
-    external: true
-    name: narro-network
 
 
 
