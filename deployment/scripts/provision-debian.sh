@@ -93,6 +93,10 @@ NARRO_HOME="/home/${NARRO_USER}"
 log_info "Provisioning Debian/Ubuntu server for Narro (Server Type: $SERVER_TYPE)..."
 log_info "Domain: ${DOMAIN}"
 
+# Remove any pre-existing broken Docker repository configurations from failed runs
+log_info "Cleaning up pre-existing repository configurations..."
+rm -f /etc/apt/sources.list.d/docker.list* 2>/dev/null || true
+
 # Update system
 log_info "Updating system packages..."
 export DEBIAN_FRONTEND=noninteractive
@@ -124,11 +128,14 @@ if ! command -v docker >/dev/null 2>&1; then
         exit 1
     fi
 
-    # Log detected OS for debugging
-    log_debug "Detected OS: $OS (from /etc/os-release ID field)"
+    # Fallback detection: If /etc/os-release says ubuntu but /etc/debian_version exists, it's Debian
+    if [ "$OS" = "ubuntu" ] && [ -f /etc/debian_version ]; then
+        log_warn "Detected /etc/debian_version but /etc/os-release says ubuntu. Using debian for Docker repo."
+        OS="debian"
+    fi
 
-    # Remove any pre-existing broken Docker repository configurations
-    rm -f /etc/apt/sources.list.d/docker.list 2>/dev/null || true
+    # Log detected OS for debugging
+    log_debug "Detected OS: $OS (from /etc/os-release ID field, with fallback checks)"
 
     # Add Docker's official GPG key
     install -m 0755 -d /etc/apt/keyrings
