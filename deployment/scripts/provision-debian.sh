@@ -124,6 +124,12 @@ if ! command -v docker >/dev/null 2>&1; then
         exit 1
     fi
 
+    # Log detected OS for debugging
+    log_debug "Detected OS: $OS (from /etc/os-release ID field)"
+
+    # Remove any pre-existing broken Docker repository configurations
+    rm -f /etc/apt/sources.list.d/docker.list 2>/dev/null || true
+
     # Add Docker's official GPG key
     install -m 0755 -d /etc/apt/keyrings
     if ! curl -fsSL https://download.docker.com/linux/${OS}/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg; then
@@ -137,6 +143,27 @@ if ! command -v docker >/dev/null 2>&1; then
     DOCKER_DISTRO=$(echo "$OS" | tr '[:upper:]' '[:lower:]')
     DOCKER_CODENAME=$(lsb_release -cs)
 
+    log_debug "Docker distro: $DOCKER_DISTRO, codename: $DOCKER_CODENAME, arch: $DOCKER_ARCH"
+
+    # Handle unsupported release codenames (like Debian Trixie which Docker doesn't have yet)
+    # Fall back to a known stable release for the distribution
+    if [ "$DOCKER_DISTRO" = "debian" ]; then
+        case "$DOCKER_CODENAME" in
+            trixie|testing)
+                log_warn "Using bookworm (stable) for Docker packages since $DOCKER_CODENAME is not yet supported"
+                DOCKER_CODENAME="bookworm"
+                ;;
+        esac
+    elif [ "$DOCKER_DISTRO" = "ubuntu" ]; then
+        case "$DOCKER_CODENAME" in
+            oracular|devel)
+                log_warn "Using jammy (LTS) for Docker packages since $DOCKER_CODENAME is not yet supported"
+                DOCKER_CODENAME="jammy"
+                ;;
+        esac
+    fi
+
+    log_debug "Docker repository: https://download.docker.com/linux/${DOCKER_DISTRO}/${DOCKER_CODENAME}"
     echo "deb [arch=${DOCKER_ARCH} signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/${DOCKER_DISTRO} ${DOCKER_CODENAME} stable" | \
         tee /etc/apt/sources.list.d/docker.list > /dev/null
 
