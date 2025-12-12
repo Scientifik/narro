@@ -64,27 +64,20 @@ For production deployments with separated frontend and backend servers on a priv
 # 1. As root, provision frontend server
 sudo DOMAIN=narro.info bash provision-debian.sh frontend
 
-# 2. Switch to narro user and setup deployment
-su - narro
-cd ~/deployment
-
-# 3. Copy frontend docker-compose
-cp /path/to/docker-compose.web.yml .
-
-# 4. Copy frontend environment template
-cp ../scripts/env.frontend.example .env.production
-
-# 5. Edit with your registry credentials and Supabase config
-# IMPORTANT: Set NEXT_PUBLIC_API_URL=https://api.narro.info
-nano .env.production
-chmod 600 .env.production
-
-# 6. As root, get SSL certificate
+# 2. As root, get SSL certificate
 sudo certbot --nginx -d narro.info -d www.narro.info
 
-# 7. Deploy frontend
-cp /path/to/web/scripts/deploy.sh ./scripts/
-bash ./scripts/deploy.sh
+# 3. Push code to main branch
+# The CI/CD pipeline will automatically:
+#   - Build Docker images
+#   - Push to container registry
+#   - Deploy to this server via deploy script
+git push origin main
+
+# 4. Monitor deployment
+# SSH to frontend server and check:
+docker compose ps
+docker compose logs -f narro-web
 ```
 
 #### Backend Server
@@ -93,28 +86,23 @@ bash ./scripts/deploy.sh
 # 1. As root, provision backend server
 sudo DOMAIN=api.narro.info bash provision-debian.sh backend
 
-# 2. Switch to narro user and setup deployment
-su - narro
-cd ~/deployment
-
-# 3. Copy backend docker-compose
-cp /path/to/docker-compose.api.yml .
-
-# 4. Copy backend environment template
-cp ../scripts/env.backend.example .env.production
-
-# 5. Edit with your registry credentials, database, and Supabase config
-# REQUIRED: DATABASE_URL, SUPABASE_SERVICE_KEY
-nano .env.production
-chmod 600 .env.production
-
-# 6. As root, get SSL certificate
+# 2. As root, get SSL certificate
 sudo certbot --nginx -d api.narro.info
 
-# 7. Deploy backend
-cp /path/to/backend/scripts/deploy.sh ./scripts/
-bash ./scripts/deploy.sh
+# 3. Push code to main branch
+# The CI/CD pipeline will automatically:
+#   - Build Docker images
+#   - Push to container registry
+#   - Deploy to this server via deploy script
+git push origin main
+
+# 4. Monitor deployment
+# SSH to backend server and check:
+docker compose ps
+docker compose logs -f narro-api
 ```
+
+**Note:** The `.gitea/workflows/build-and-deploy.yml` workflow in each repository (web/ and backend/) handles all deployment steps automatically. The deploy script is SCP'd to the server and executed by the CI/CD pipeline, which pulls the latest container images and starts the services.
 
 ### Testing Multi-Host Connectivity
 
@@ -155,28 +143,35 @@ curl -v https://api.narro.info/api/health  # Backend API
 
 ## Directory Structure
 
-After provisioning, your server will have:
+After provisioning and CI/CD deployment, your server will have:
 
 ```
 /home/narro/
 └── deployment/
-    ├── docker-compose.yml    # Copy from repo (web.yml or api.yml)
-    ├── .env.production       # Your secrets (create this)
+    ├── docker-compose.yml    # Created by CI/CD (web.yml or api.yml)
+    ├── .env.production       # Created by CI/CD with env vars
     └── scripts/
-        └── env.frontend.example or env.backend.example  # Template
+        └── deploy.sh         # SCP'd by CI/CD from repo
 ```
+
+All files in `/home/narro/deployment/` are created and managed by the CI/CD pipeline. Do not manually create or edit them - they will be overwritten on each deployment.
 
 ## Environment Variables
 
-See `env.frontend.example` or `env.backend.example` for all required environment variables. Key ones:
+The CI/CD pipeline uses the following environment variables (configured in Gitea Actions secrets):
 
-- `REGISTRY_URL` - Container registry (e.g., `ord.vultrcr.com/narro`)
-- `REGISTRY_USER` - Registry username
-- `REGISTRY_PASSWORD` - Registry password
-- `IMAGE_TAG` - Image tag to deploy (default: `latest`)
+- `REGISTRY_URL` - Container registry URL (e.g., `ord.vultrcr.com/narro`)
+- `REGISTRY_USER` - Registry login username
+- `REGISTRY_PASSWORD` - Registry login password
 - `DATABASE_URL` - Supabase PostgreSQL connection string
-- `SUPABASE_*` - Supabase configuration
-- `NEXT_PUBLIC_*` - Frontend environment variables (frontend only)
+- `SUPABASE_SERVICE_KEY` - Supabase service role key (backend only)
+- `SUPABASE_URL` - Supabase project URL
+- `NEXT_PUBLIC_API_URL` - Backend API URL (frontend only, e.g., `https://api.narro.info`)
+- `NEXT_PUBLIC_SUPABASE_URL` - Supabase URL for frontend
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY` - Supabase anonymous key for frontend
+- `NEXT_PUBLIC_S3_BASE_URL` - S3 bucket URL for thumbnails (frontend only)
+
+See `env.frontend.example` and `env.backend.example` for complete variable lists. These templates are referenced by the deploy scripts.
 
 ## Troubleshooting
 
