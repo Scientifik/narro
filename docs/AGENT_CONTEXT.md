@@ -60,7 +60,7 @@ narro/
 |-----------|-----------|---------|
 | Backend API | Go 1.21+, Gin | REST API server |
 | Database | Supabase (PostgreSQL) | Data storage + Auth |
-| Web App | Next.js 14+, TypeScript, Tailwind | Web interface |
+| Web App | Next.js 16.0.10, React 19.2.3, TypeScript, Tailwind | Web interface |
 | Mobile App | React Native + Expo | iOS/Android apps |
 | Scraper | Python 3.11+, SQLAlchemy | Background scraping service |
 | Scraping Provider | ScraperAPI, Apify | Third-party scraping APIs (configurable) |
@@ -99,11 +99,12 @@ narro/
   - Feed customization (emoji, colors, custom images, descriptions)
   - Integrated profile management within feeds
   - Feed onboarding for empty feeds
-  - Tutorial system infrastructure (react-joyride integration, tutorial hooks)
+  - Tutorial system (custom implementation, no external dependencies)
   - API client with token management
   - Protected routes with authenticated layout
   - Auth context for state management
   - Consistent design system (removed user-selectable themes, fixed design with feed-level customization)
+  - Security updates: Next.js 16.0.10, React 19.2.3 (CVE-2025-55182 patched)
 
 - **Scraper Service:**
   - ScraperAPI provider implementation
@@ -119,6 +120,14 @@ narro/
   - Storage provider system (local filesystem storage for thumbnails)
   - Thumbnail downloading and caching in parsers
 
+- **CI/CD:**
+  - Gitea Actions workflows for automated builds and deployments
+  - Automated Docker image builds for backend and web services
+  - Container image push to Vultr Container Registry
+  - Automated deployment to Vultr server on push to main branch
+  - Image tagging with both `latest` and commit SHA
+  - Docker layer caching for faster builds
+
 ### 🚧 In Progress / Next Up
 - Mobile app UI implementation
 - Help page and tutorial system
@@ -126,7 +135,6 @@ narro/
 
 ### ⏳ Planned
 - Stripe integration
-- CI/CD pipeline for automated builds and deployments
 - Additional platform support (YouTube, etc.)
 
 ## Key Architecture Decisions
@@ -169,6 +177,8 @@ narro/
 16. **Thumbnail storage:** Scraper uploads thumbnails directly to S3-compatible storage. Files are stored with path structure `{job_id}/{uuid}.jpg`. Frontend constructs full S3 URLs using `NEXT_PUBLIC_S3_BASE_URL` environment variable. Backend no longer serves thumbnails.
 
 17. **Container registry deployment:** All services are deployed using pre-built container images from a registry (e.g., Vultr Container Registry). Images are built with platform-specific tags (linux/amd64) and pulled on the server. Deployment uses Docker Compose with health checks for zero-downtime updates.
+
+18. **Gitea Actions CI/CD:** Automated builds and deployments are handled by Gitea Actions workflows (`.gitea/workflows/build-and-deploy.yml`). On push to `main` branch, workflows build Docker images, push to Vultr Container Registry, and automatically deploy to the Vultr server. Images are tagged with both `latest` and commit SHA for versioning.
 
 18. **Ubuntu deployment:** Production deployment uses Ubuntu 22.04 LTS with Docker, Docker Compose, and Nginx. Provisioning script (`deployment/scripts/provision-ubuntu.sh`) handles one-time server setup. Deployment script (`deployment/scripts/deploy.sh`) pulls images from registry and starts containers.
 
@@ -416,9 +426,12 @@ function MyComponent() {
 | Web types | `web/types/api.ts` |
 | Web feed components | `web/components/feed/` |
 | Web feed management components | `web/components/feeds/` |
-| Web tutorial components | `web/components/tutorial/Tutorial.tsx` |
+| Web tutorial components | `web/components/tutorial/Tutorial.tsx` (custom implementation, no react-joyride) |
 | Web navigation | `web/components/navigation/TopNavigation.tsx` |
 | Web authenticated routes | `web/app/(authenticated)/` |
+| CI/CD workflow | `.gitea/workflows/build-and-deploy.yml` |
+| Deployment scripts | `deployment/scripts/deploy.sh` |
+| Docker compose config | `deployment/docker-compose.yml` |
 
 ## Database Schema Overview
 
@@ -510,7 +523,7 @@ Update this context file when:
 - [ ] Development workflow changes
 - [ ] New team member onboarding
 
-**Last Updated:** December 3, 2025
+**Last Updated:** December 11, 2025
 
 ---
 
