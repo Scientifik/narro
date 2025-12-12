@@ -2,80 +2,11 @@
 
 ## Files
 
-- `provision-debian.sh` - One-time server provisioning script for Debian/Ubuntu (supports frontend, backend, or single-server modes)
-- `env.prod` - Example production environment file template (for single-server deployments)
+- `provision-debian.sh` - One-time server provisioning script for Debian/Ubuntu (supports frontend or backend servers)
 - `env.frontend.example` - Example environment file for frontend servers
 - `env.backend.example` - Example environment file for backend servers
 
 **Note:** Deployment scripts (`deploy.sh`) are maintained in the **web** and **backend** repositories separately. This allows each service to manage its own deployment independently. The provisioning script here only handles server setup (Docker, Nginx, user accounts).
-
-## Quick Start - Single Server (Default)
-
-For a single server running both API and web services.
-
-### 1. Provision Server (One-time, as root)
-
-```bash
-# On your Debian/Ubuntu server, as root:
-export DOMAIN=narro.info
-bash provision-debian.sh
-# Or specify server type explicitly:
-bash provision-debian.sh single
-```
-
-This script will:
-- Detect OS (Debian/Ubuntu) and install correct Docker version
-- Install Docker, Docker Compose, Nginx, and Certbot
-- Create `narro` user and directory structure
-- Configure Nginx with reverse proxy for API and web
-- Set up firewall rules (UFW or iptables)
-
-### 2. Configure Environment (as narro user)
-
-```bash
-# Switch to narro user
-su - narro
-cd ~/deployment
-
-# Copy docker-compose.yml from narro repo to this directory
-cp /path/to/narro/deployment/docker-compose.yml .
-
-# Create environment file from template
-cp /path/to/narro/deployment/scripts/env.prod .env.production
-
-# Edit with your secrets (database URL, registry credentials, etc.)
-nano .env.production
-
-# Set secure permissions
-chmod 600 .env.production
-```
-
-### 3. Get SSL Certificate (as root)
-
-```bash
-# Run as root - ensures port 443 is free
-sudo certbot --nginx -d narro.info -d www.narro.info
-```
-
-### 4. Deploy Services (as narro user)
-
-Deploy using Docker Compose:
-
-```bash
-cd ~/deployment
-
-# Pull latest images from registry
-docker compose pull
-
-# Start services (API on :3000, web on :3001)
-docker compose up -d
-
-# Check status
-docker compose ps
-
-# View logs
-docker compose logs -f
-```
 
 ---
 
@@ -213,13 +144,12 @@ curl -v https://api.narro.info/api/health  # Backend API
 
 ---
 
-## Single File Reference
+## Server Reference
 
 | Mode | Provision | Deploy | Docker Compose | Environment |
 |------|-----------|--------|----------------|-------------|
 | Frontend | `provision-debian.sh frontend` | `web/scripts/deploy.sh` (via SCP in CI/CD) | `docker-compose.web.yml` | `env.frontend.example` |
 | Backend | `provision-debian.sh backend` | `backend/scripts/deploy.sh` (via SCP in CI/CD) | `docker-compose.api.yml` | `env.backend.example` |
-| Single | `provision-debian.sh` | `web/scripts/deploy.sh` + `backend/scripts/deploy.sh` (manual copy) | `docker-compose.yml` | `env.prod` |
 
 **Note:** Deploy scripts are stored in the web and backend repositories, not in the narro repository. CI/CD workflows SCP these scripts to the server before execution.
 
@@ -230,16 +160,15 @@ After provisioning, your server will have:
 ```
 /home/narro/
 └── deployment/
-    ├── docker-compose.yml    # Copy this from repo
+    ├── docker-compose.yml    # Copy from repo (web.yml or api.yml)
     ├── .env.production       # Your secrets (create this)
     └── scripts/
-        ├── deploy.sh
-        └── env.prod          # Template
+        └── env.frontend.example or env.backend.example  # Template
 ```
 
 ## Environment Variables
 
-See `env.prod` for all required environment variables. Key ones:
+See `env.frontend.example` or `env.backend.example` for all required environment variables. Key ones:
 
 - `REGISTRY_URL` - Container registry (e.g., `ord.vultrcr.com/narro`)
 - `REGISTRY_USER` - Registry username
@@ -247,7 +176,7 @@ See `env.prod` for all required environment variables. Key ones:
 - `IMAGE_TAG` - Image tag to deploy (default: `latest`)
 - `DATABASE_URL` - Supabase PostgreSQL connection string
 - `SUPABASE_*` - Supabase configuration
-- `NEXT_PUBLIC_*` - Frontend environment variables
+- `NEXT_PUBLIC_*` - Frontend environment variables (frontend only)
 
 ## Troubleshooting
 

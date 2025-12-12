@@ -180,7 +180,7 @@ narro/
 
 18. **Gitea Actions CI/CD:** Automated builds and deployments are handled by Gitea Actions workflows (`.gitea/workflows/build-and-deploy.yml`). On push to `main` branch, workflows build Docker images, push to Vultr Container Registry, and automatically deploy to the Vultr server. Images are tagged with both `latest` and commit SHA for versioning.
 
-18. **Ubuntu deployment:** Production deployment uses Ubuntu 22.04 LTS with Docker, Docker Compose, and Nginx. Provisioning script (`deployment/scripts/provision-ubuntu.sh`) handles one-time server setup. Deployment script (`deployment/scripts/deploy.sh`) pulls images from registry and starts containers.
+18. **Multi-host deployment:** Production deployment uses separate frontend and backend servers (Ubuntu 22.04 LTS+/Debian 12+) with Docker, Docker Compose, and Nginx. Provisioning script (`deployment/scripts/provision-debian.sh`) handles one-time server setup for both frontend and backend. Each service manages its own deployment via CI/CD workflows.
 
 ## Documentation Map
 
@@ -193,7 +193,7 @@ narro/
 | Auth implementation | `docs/signup-login-implementation.md` | Authentication flow, signup/login implementation |
 | Deployment guide | `docs/deployment-guide.md` | Complete production deployment setup and instructions |
 | Deployment summary | `docs/deployment-summary.md` | Overview of deployment infrastructure and components |
-| Deployment scripts | `deployment/scripts/README.md` | Ubuntu provisioning and container registry deployment scripts |
+| Deployment scripts | `deployment/scripts/README.md` | Multi-host provisioning and deployment scripts for frontend/backend |
 | Nginx setup | `docs/nginx-setup.md` | Nginx configuration and SSL/TLS setup with Let's Encrypt |
 | Recent updates | `update.md` | Daily progress updates (check this first!) |
 | Project roadmap | `README.md` | Original project plan and session outline |

@@ -2,7 +2,7 @@
 # Debian/Ubuntu Server Provisioning Script for Narro
 # One-time setup: Installs Docker, Nginx, and basic configuration
 # Run as root on a fresh Debian 12+ or Ubuntu 22.04 installation
-# Usage: sudo bash provision-debian.sh [frontend|backend|single]
+# Usage: sudo bash provision-debian.sh [frontend|backend]
 
 set -e
 
@@ -71,12 +71,12 @@ validate_system
 check_internet
 
 # Configuration
-SERVER_TYPE="${1:-single}"  # frontend, backend, or single (default)
+SERVER_TYPE="${1}"  # frontend or backend (required)
 
 # Validate server type
-if [[ ! "$SERVER_TYPE" =~ ^(frontend|backend|single)$ ]]; then
-    log_error "Invalid server type: $SERVER_TYPE"
-    log_error "Usage: sudo bash provision-debian.sh [frontend|backend|single]"
+if [[ ! "$SERVER_TYPE" =~ ^(frontend|backend)$ ]]; then
+    log_error "Invalid or missing server type: $SERVER_TYPE"
+    log_error "Usage: sudo bash provision-debian.sh [frontend|backend]"
     exit 1
 fi
 
@@ -85,8 +85,6 @@ if [ "$SERVER_TYPE" = "frontend" ]; then
     DOMAIN="${DOMAIN:-narro.info}"
 elif [ "$SERVER_TYPE" = "backend" ]; then
     DOMAIN="${DOMAIN:-api.narro.info}"
-else
-    DOMAIN="${DOMAIN:-alpha.narro.info}"
 fi
 
 NARRO_USER="${NARRO_USER:-narro}"
@@ -287,43 +285,8 @@ upstream web {
         proxy_cache_bypass \$http_upgrade;
     }"
     else
-        # single mode
-        local upstreams="upstream api {
-    server localhost:3000;
-    keepalive 32;
-}
-
-upstream web {
-    server localhost:3001;
-    keepalive 32;
-}"
-        local server_names="$domain www.$domain"
-        local locations="# API routes
-    location /api/ {
-        proxy_pass http://api;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_cache_bypass \$http_upgrade;
-    }
-
-    # Web app
-    location / {
-        proxy_pass http://web;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_cache_bypass \$http_upgrade;
-        proxy_read_timeout 60s;
-    }"
+        log_error "Unknown server type: $server_type"
+        return 1
     fi
 
     # Replace server-specific placeholders
