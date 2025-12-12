@@ -3,11 +3,11 @@
 ## Files
 
 - `scripts/provision-debian.sh` - One-time server provisioning script for Debian/Ubuntu (supports frontend, backend, or single-server modes)
-- `scripts/deploy-web.sh` - Deployment script for frontend (web) server - pulls narro-web image and starts container
-- `scripts/deploy-api.sh` - Deployment script for backend (API) server - pulls narro-api image and starts container
 - `scripts/env.prod` - Example production environment file template (legacy, for single-server)
 - `scripts/env.frontend.example` - Example environment file for frontend servers
 - `scripts/env.backend.example` - Example environment file for backend servers
+
+**Note:** Deployment scripts (`scripts/deploy.sh`) are included in the **web** and **backend** repositories separately, not in this narro repository. This allows each repository to manage its own deployment independently.
 
 ## Quick Start - Single Server (Default)
 
@@ -54,16 +54,24 @@ sudo certbot --nginx -d narro.info -d www.narro.info
 
 ### 4. Deploy (as narro user)
 
-For single-server deployments, both services are included in `docker-compose.yml`. You'll need to either:
+For single-server deployments, copy the deploy scripts from the web and backend repositories:
 
-**Option A:** Use both deploy scripts sequentially
 ```bash
 cd ~/deployment
-./scripts/deploy-web.sh   # Deploy web service
-./scripts/deploy-api.sh   # Deploy API service
+
+# Copy deploy scripts from the repositories
+cp /path/to/web/scripts/deploy.sh ./scripts/deploy-web.sh
+cp /path/to/backend/scripts/deploy.sh ./scripts/deploy-api.sh
+
+# Make them executable
+chmod +x ./scripts/deploy-*.sh
+
+# Run both deployments
+./scripts/deploy-web.sh    # Deploy web service
+./scripts/deploy-api.sh    # Deploy API service
 ```
 
-**Option B:** Use docker-compose directly (if you prefer not to use scripts)
+Or use docker-compose directly:
 ```bash
 cd ~/deployment
 docker compose pull
@@ -145,7 +153,8 @@ chmod 600 .env.production
 sudo certbot --nginx -d narro.info -d www.narro.info
 
 # 7. Deploy frontend
-./scripts/deploy-web.sh
+cp /path/to/web/scripts/deploy.sh ./scripts/
+bash ./scripts/deploy.sh
 ```
 
 #### Backend Server
@@ -173,7 +182,8 @@ chmod 600 .env.production
 sudo certbot --nginx -d api.narro.info
 
 # 7. Deploy backend
-./scripts/deploy-api.sh
+cp /path/to/backend/scripts/deploy.sh ./scripts/
+bash ./scripts/deploy.sh
 ```
 
 ### Testing Multi-Host Connectivity
@@ -207,9 +217,11 @@ curl -v https://api.narro.info/api/health  # Backend API
 
 | Mode | Provision | Deploy | Docker Compose | Environment |
 |------|-----------|--------|----------------|-------------|
-| Frontend | `provision-debian.sh frontend` | `scripts/deploy-web.sh` | `docker-compose.web.yml` | `env.frontend.example` |
-| Backend | `provision-debian.sh backend` | `scripts/deploy-api.sh` | `docker-compose.api.yml` | `env.backend.example` |
-| Single | `provision-debian.sh` (or `provision-debian.sh single`) | `scripts/deploy-web.sh` + `scripts/deploy-api.sh` | `docker-compose.yml` | `env.prod` |
+| Frontend | `provision-debian.sh frontend` | `web/scripts/deploy.sh` (via SCP in CI/CD) | `docker-compose.web.yml` | `env.frontend.example` |
+| Backend | `provision-debian.sh backend` | `backend/scripts/deploy.sh` (via SCP in CI/CD) | `docker-compose.api.yml` | `env.backend.example` |
+| Single | `provision-debian.sh` | `web/scripts/deploy.sh` + `backend/scripts/deploy.sh` (manual copy) | `docker-compose.yml` | `env.prod` |
+
+**Note:** Deploy scripts are stored in the web and backend repositories, not in the narro repository. CI/CD workflows SCP these scripts to the server before execution.
 
 ## Directory Structure
 
