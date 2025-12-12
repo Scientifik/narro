@@ -1,0 +1,132 @@
+name: Build and Deploy
+
+on:
+  push:
+    branches:
+      - main
+
+# Required Gitea Secrets:
+# - REGISTRY_URL: Vultr registry URL (e.g., ord.vultrcr.com/narro)
+# - REGISTRY_USER: Registry username
+# - REGISTRY_PASSWORD: Registry password
+# - VULTR_HOST: Vultr server IP/hostname
+# - VULTR_USER: SSH username (usually narro)
+# - VULTR_SSH_KEY: Private SSH key for server access
+# - VULTR_DEPLOY_PATH: Deployment directory (e.g., /home/narro/deployment)
+# Optional secrets for web build:
+# - NEXT_PUBLIC_API_URL: API URL for frontend
+# - NEXT_PUBLIC_SUPABASE_URL: Supabase project URL
+# - NEXT_PUBLIC_SUPABASE_ANON_KEY: Supabase anonymous key
+# - NEXT_PUBLIC_SENTRY_DSN: Sentry DSN for frontend
+# - SENTRY_ORG: Sentry organization
+# - SENTRY_PROJECT: Sentry project name
+# - SENTRY_AUTH_TOKEN: Sentry auth token for source maps
+
+env:
+  REGISTRY_URL: ${{ secrets.REGISTRY_URL }}
+  IMAGE_NAME_API: narro-api
+  IMAGE_NAME_WEB: narro-web
+
+jobs:
+  security-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: './web/package-lock.json'
+
+      - name: Install dependencies
+        working-directory: ./web
+        run: npm ci
+
+      - name: Run security audit
+        working-directory: ./web
+        run: npm audit --audit-level=moderate
+        continue-on-error: false
+
+      - name: Check for outdated packages
+        working-directory: ./web
+        run: |
+          echo "Checking for outdated packages..."
+          npm outdated || true
+
+  build-and-deploy:
+    needs: security-audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Get commit SHA
+        id: commit
+        run: echo "sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Login to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.REGISTRY_URL }}
+          username: ${{ secrets.REGISTRY_USER }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ secrets.REGISTRY_URL }}/${{ env.IMAGE_NAME_API }}:latest
+            ${{ secrets.REGISTRY_URL }}/${{ env.IMAGE_NAME_API }}:${{ steps.commit.outputs.sha }}
+          cache-from: type=registry,ref=${{ secrets.REGISTRY_URL }}/${{ env.IMAGE_NAME_API }}:buildcache
+          cache-to: type=registry,ref=${{ secrets.REGISTRY_URL }}/${{ env.IMAGE_NAME_API }}:buildcache,mode=max
+
+      - name: Build and push web image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./web
+          file: ./web/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ secrets.REGISTRY_URL }}/${{ env.IMAGE_NAME_WEB }}:latest
+            ${{ secrets.REGISTRY_URL }}/${{ env.IMAGE_NAME_WEB }}:${{ steps.commit.outputs.sha }}
+          build-args: |
+            NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL }}
+            NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+            NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+            NEXT_PUBLIC_SENTRY_DSN=${{ secrets.NEXT_PUBLIC_SENTRY_DSN }}
+            SENTRY_ORG=${{ secrets.SENTRY_ORG }}
+            SENTRY_PROJECT=${{ secrets.SENTRY_PROJECT }}
+            SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}
+          cache-from: type=registry,ref=${{ secrets.REGISTRY_URL }}/${{ env.IMAGE_NAME_WEB }}:buildcache
+          cache-to: type=registry,ref=${{ secrets.REGISTRY_URL }}/${{ env.IMAGE_NAME_WEB }}:buildcache,mode=max
+
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.VULTR_SSH_KEY }}
+
+      - name: Add server to known hosts
+        run: |
+          ssh-keyscan -H ${{ secrets.VULTR_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy to Vultr server
+        env:
+          COMMIT_SHA: ${{ steps.commit.outputs.sha }}
+        run: |
+          ssh ${{ secrets.VULTR_USER }}@${{ secrets.VULTR_HOST }} bash -c "
+            cd ${{ secrets.VULTR_DEPLOY_PATH }}
+            export IMAGE_TAG=$COMMIT_SHA
+            bash scripts/deploy.sh
+          "
+

@@ -85,3 +85,8 @@ log_info "  docker compose exec narro-api sh    # Shell into API container"
 log_info "  curl -v http://localhost:3000/api/health  # Test API directly"
 log_info "  curl -v http://localhost/api/health  # Test through Nginx"
 
+
+
+
+
+

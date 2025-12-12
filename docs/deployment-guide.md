@@ -28,7 +28,8 @@ deployment/
 2. **Docker & Docker Compose installed**
 3. **Nginx installed** (for reverse proxy)
 4. **Domain configured** (narro.info) pointing to Vultr instance IP
-5. **GitHub repository** with deployment scripts
+5. **Gitea repository** with deployment scripts
+6. **Gitea Actions runners** configured (if using Gitea Actions for CI/CD)
 
 ## Initial Setup
 
@@ -52,7 +53,7 @@ mkdir -p /home/narro/{app,deployment/{scripts,logs,nginx}}
 
 # Clone repository
 cd /home/narro/app
-git clone https://github.com/Scientifik/narro.git .
+git clone <your-gitea-repo-url> .
 ```
 
 ### 3. Create Production Environment File
@@ -112,7 +113,7 @@ SENTRY_DSN=your-sentry-dsn
 cp /home/narro/app/deployment/*.yml /home/narro/deployment/
 
 # Copy deployment scripts
-cp /home/narro/app/.github/deployment-scripts/*.sh /home/narro/deployment/scripts/
+cp /home/narro/app/deployment/scripts/*.sh /home/narro/deployment/scripts/
 chmod +x /home/narro/deployment/scripts/*.sh
 
 # Copy Nginx config
@@ -142,15 +143,61 @@ cd /home/narro/deployment
 bash scripts/deploy.sh
 ```
 
-### Automated Deployment (GitHub Actions)
+### Automated Deployment (Gitea Actions)
 
-Deployment is automatically triggered on every push to `main` branch via GitHub Actions.
+Deployment is automatically triggered on every push to `main` branch via Gitea Actions.
 
-**Required GitHub Secrets:**
+The workflow (`.gitea/workflows/build-and-deploy.yml`) will:
+1. Build Docker images for backend and web services
+2. Tag images with both `latest` and commit SHA
+3. Push images to Vultr Container Registry
+4. SSH to Vultr server and run `deploy.sh` to pull and deploy new images
+
+**Required Gitea Secrets:**
+
+Configure these in your Gitea repository settings (Settings → Secrets):
+
+**Container Registry:**
+- `REGISTRY_URL` - Vultr registry URL (e.g., `ord.vultrcr.com/narro`)
+- `REGISTRY_USER` - Registry username
+- `REGISTRY_PASSWORD` - Registry password
+
+**Deployment:**
 - `VULTR_HOST` - IP address or hostname of Vultr instance
-- `VULTR_USER` - SSH username (usually `root`)
-- `VULTR_SSH_KEY` - Private SSH key for authentication
-- `VULTR_DEPLOY_PATH` - Path on instance (e.g., `/home/narro`)
+- `VULTR_USER` - SSH username (usually `narro`)
+- `VULTR_SSH_KEY` - Private SSH key for authentication (full private key content)
+- `VULTR_DEPLOY_PATH` - Deployment directory (e.g., `/home/narro/deployment`)
+
+**Optional (for web build):**
+- `NEXT_PUBLIC_API_URL` - API URL for frontend
+- `NEXT_PUBLIC_SUPABASE_URL` - Supabase project URL
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY` - Supabase anonymous key
+- `NEXT_PUBLIC_SENTRY_DSN` - Sentry DSN for frontend (optional)
+- `SENTRY_ORG` - Sentry organization (optional, for source maps)
+- `SENTRY_PROJECT` - Sentry project name (optional)
+- `SENTRY_AUTH_TOKEN` - Sentry auth token (optional, for source maps)
+
+**Setting up Gitea Actions:**
+
+1. **Configure Gitea Actions runners:**
+   - Ensure Gitea Actions is enabled in your Gitea instance
+   - Set up at least one runner (self-hosted or cloud)
+   - Runners should have Docker installed and access to build images
+
+2. **Add secrets to repository:**
+   - Go to repository Settings → Secrets
+   - Add each required secret listed above
+   - For `VULTR_SSH_KEY`, paste the full private key content (including `-----BEGIN` and `-----END` lines)
+
+3. **Verify workflow:**
+   - Push to `main` branch to trigger workflow
+   - Check Actions tab in Gitea to view workflow runs
+   - Workflow will build images, push to registry, and deploy automatically
+
+**Image Tagging:**
+- Images are tagged with both `latest` and commit SHA (7 characters)
+- Example: `ord.vultrcr.com/narro/narro-api:latest` and `ord.vultrcr.com/narro/narro-api:a1b2c3d`
+- The `deploy.sh` script uses `IMAGE_TAG` environment variable (set to commit SHA by workflow)
 
 ## Service Management
 

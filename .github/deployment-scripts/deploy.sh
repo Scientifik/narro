@@ -91,3 +91,8 @@ echo -e "${GREEN}Services are running with commit: $COMMIT_SHA${NC}"
 
 
 
+
+
+
+
+
