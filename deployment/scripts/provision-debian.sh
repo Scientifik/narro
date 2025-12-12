@@ -10,17 +10,65 @@ set -e
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
 NC='\033[0m'
 
 log_info() { echo -e "${GREEN}[INFO]${NC} $1"; }
 log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
+log_debug() { echo -e "${BLUE}[DEBUG]${NC} $1"; }
+
+# Trap errors and show helpful message
+trap 'log_error "Script failed at line $LINENO. Check logs and error messages above."' ERR
 
 # Check root
 if [ "$(id -u)" -ne 0 ]; then
     log_error "Must run as root (use sudo)"
     exit 1
 fi
+
+# Function to check command exists
+command_exists() {
+    command -v "$1" >/dev/null 2>&1
+}
+
+# Function to check internet connectivity
+check_internet() {
+    log_info "Checking internet connectivity..."
+    if ! ping -c 1 -W 2 8.8.8.8 >/dev/null 2>&1; then
+        log_warn "Could not reach 8.8.8.8 (Google DNS). This may cause package downloads to fail."
+        log_warn "If your network has firewall restrictions, you may need to configure apt manually."
+    fi
+}
+
+# Function to validate system requirements
+validate_system() {
+    log_info "Validating system requirements..."
+
+    # Check if running on supported OS
+    if [ ! -f /etc/os-release ]; then
+        log_error "Cannot determine OS. /etc/os-release not found."
+        exit 1
+    fi
+
+    # Check available disk space (need at least 10GB)
+    local available_gb=$(df /home | awk 'NR==2 {print int($4/1024/1024)}')
+    if [ "$available_gb" -lt 10 ]; then
+        log_warn "Low disk space: only ${available_gb}GB available. Recommend at least 10GB."
+    fi
+
+    # Check available memory (need at least 1GB)
+    local available_mem=$(free -g | awk 'NR==2 {print $7}')
+    if [ "$available_mem" -lt 1 ]; then
+        log_warn "Low memory: only ${available_mem}GB available. Docker may perform poorly."
+    fi
+
+    log_info "System validation passed"
+}
+
+# Run validation
+validate_system
+check_internet
 
 # Configuration
 SERVER_TYPE="${1:-single}"  # frontend, backend, or single (default)
@@ -69,19 +117,43 @@ apt-get install -y \
 # Install Docker
 log_info "Installing Docker..."
 if ! command -v docker >/dev/null 2>&1; then
+    # Detect OS distribution
+    if [ -f /etc/os-release ]; then
+        . /etc/os-release
+        OS=$ID
+    else
+        log_error "Cannot determine OS distribution"
+        exit 1
+    fi
+
     # Add Docker's official GPG key
     install -m 0755 -d /etc/apt/keyrings
-    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+    if ! curl -fsSL https://download.docker.com/linux/${OS}/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg; then
+        log_error "Failed to add Docker GPG key"
+        exit 1
+    fi
     chmod a+r /etc/apt/keyrings/docker.gpg
 
-    # Set up Docker repository
-    echo \
-      "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
-      $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+    # Set up Docker repository (use correct distro)
+    DOCKER_ARCH=$(dpkg --print-architecture)
+    DOCKER_DISTRO=$(echo "$OS" | tr '[:upper:]' '[:lower:]')
+    DOCKER_CODENAME=$(lsb_release -cs)
+
+    echo "deb [arch=${DOCKER_ARCH} signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/${DOCKER_DISTRO} ${DOCKER_CODENAME} stable" | \
+        tee /etc/apt/sources.list.d/docker.list > /dev/null
 
     # Install Docker Engine
-    apt-get update
-    apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+    log_info "Updating package lists..."
+    if ! apt-get update; then
+        log_error "Failed to update package lists"
+        exit 1
+    fi
+
+    log_info "Installing Docker packages..."
+    if ! apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin; then
+        log_error "Failed to install Docker"
+        exit 1
+    fi
 else
     log_info "Docker already installed"
 fi
@@ -111,31 +183,24 @@ mkdir -p /var/www/certbot
 chown -R "${NARRO_USER}:${NARRO_USER}" "${NARRO_HOME}"
 chmod 700 "${NARRO_HOME}/deployment"
 
-# Create Nginx configuration
-log_info "Configuring Nginx..."
+# Function to generate Nginx configuration
+generate_nginx_config() {
+    local config_file=$1
+    local server_type=$2
+    local domain=$3
 
-# Generate appropriate nginx config based on server type
-if [ "$SERVER_TYPE" = "frontend" ]; then
-    log_info "Configuring Nginx for FRONTEND server"
-    cat > /etc/nginx/sites-available/narro << NGINX_EOF
-# Nginx configuration for Narro Frontend
-# Domain: ${DOMAIN}
+    cat > "$config_file" << 'NGINX_EOF'
+# Nginx configuration for Narro
+# Domain: {DOMAIN}
+# Server Type: {SERVER_TYPE}
 
-upstream api {
-    server api.narro.info:443;  # Backend API server
-    keepalive 32;
-}
-
-upstream web {
-    server localhost:3001;  # Local Next.js web application
-    keepalive 32;
-}
+{UPSTREAMS}
 
 # HTTP server - serves content initially, Certbot will add HTTPS and redirect
 server {
     listen 80;
     listen [::]:80;
-    server_name ${DOMAIN} www.${DOMAIN};
+    server_name {SERVER_NAMES};
 
     # Allow Let's Encrypt challenges
     location /.well-known/acme-challenge/ {
@@ -147,7 +212,37 @@ server {
 
     client_max_body_size 10M;
 
-    # API routes (proxy to backend)
+    {LOCATIONS}
+
+    location /api/health {
+        proxy_pass http://api/api/health;
+        access_log off;
+    }
+}
+
+# HTTPS server will be added by Certbot when you run: certbot --nginx -d {DOMAIN}
+NGINX_EOF
+
+    # Read the template
+    local nginx_config=$(cat "$config_file")
+
+    # Replace placeholders
+    nginx_config="${nginx_config//{DOMAIN}/$domain}"
+    nginx_config="${nginx_config//{SERVER_TYPE}/$server_type}"
+
+    # Set up server-specific configuration
+    if [ "$server_type" = "frontend" ]; then
+        local upstreams="upstream api {
+    server api.narro.info:443;  # Backend API server
+    keepalive 32;
+}
+
+upstream web {
+    server localhost:3001;  # Local Next.js web application
+    keepalive 32;
+}"
+        local server_names="$domain www.$domain"
+        local locations="# API routes (proxy to backend)
     location /api/ {
         proxy_pass https://api;
         proxy_http_version 1.1;
@@ -172,39 +267,14 @@ server {
         proxy_set_header X-Forwarded-Proto \$scheme;
         proxy_cache_bypass \$http_upgrade;
         proxy_read_timeout 60s;
-    }
-}
-
-# HTTPS server will be added by Certbot when you run: certbot --nginx -d ${DOMAIN}
-NGINX_EOF
-elif [ "$SERVER_TYPE" = "backend" ]; then
-    log_info "Configuring Nginx for BACKEND server"
-    cat > /etc/nginx/sites-available/narro << NGINX_EOF
-# Nginx configuration for Narro API Backend
-# Domain: ${DOMAIN}
-
-upstream api {
+    }"
+    elif [ "$server_type" = "backend" ]; then
+        local upstreams="upstream api {
     server localhost:3000;  # Local Go API server
     keepalive 32;
-}
-
-# HTTP server - serves content initially, Certbot will add HTTPS and redirect
-server {
-    listen 80;
-    listen [::]:80;
-    server_name ${DOMAIN};
-
-    # Allow Let's Encrypt challenges
-    location /.well-known/acme-challenge/ {
-        root /var/www/certbot;
-    }
-
-    access_log /var/log/nginx/narro-access.log;
-    error_log /var/log/nginx/narro-error.log;
-
-    client_max_body_size 10M;
-
-    # API routes
+}"
+        local server_names="$domain"
+        local locations="# API routes
     location /api/ {
         proxy_pass http://api;
         proxy_http_version 1.1;
@@ -215,23 +285,10 @@ server {
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
         proxy_cache_bypass \$http_upgrade;
-    }
-
-    location /api/health {
-        proxy_pass http://api/api/health;
-        access_log off;
-    }
-}
-
-# HTTPS server will be added by Certbot when you run: certbot --nginx -d ${DOMAIN}
-NGINX_EOF
-else
-    log_info "Configuring Nginx for SINGLE server (default)"
-    cat > /etc/nginx/sites-available/narro << NGINX_EOF
-# Nginx configuration for Narro (Single Server)
-# Domain: ${DOMAIN}
-
-upstream api {
+    }"
+    else
+        # single mode
+        local upstreams="upstream api {
     server localhost:3000;
     keepalive 32;
 }
@@ -239,25 +296,9 @@ upstream api {
 upstream web {
     server localhost:3001;
     keepalive 32;
-}
-
-# HTTP server - serves content initially, Certbot will add HTTPS and redirect
-server {
-    listen 80;
-    listen [::]:80;
-    server_name ${DOMAIN} www.${DOMAIN};
-
-    # Allow Let's Encrypt challenges
-    location /.well-known/acme-challenge/ {
-        root /var/www/certbot;
-    }
-
-    access_log /var/log/nginx/narro-access.log;
-    error_log /var/log/nginx/narro-error.log;
-
-    client_max_body_size 10M;
-
-    # API routes
+}"
+        local server_names="$domain www.$domain"
+        local locations="# API routes
     location /api/ {
         proxy_pass http://api;
         proxy_http_version 1.1;
@@ -282,16 +323,23 @@ server {
         proxy_set_header X-Forwarded-Proto \$scheme;
         proxy_cache_bypass \$http_upgrade;
         proxy_read_timeout 60s;
-    }
+    }"
+    fi
 
-    location /api/health {
-        proxy_pass http://api/api/health;
-        access_log off;
-    }
+    # Replace server-specific placeholders
+    nginx_config="${nginx_config//{UPSTREAMS}/$upstreams}"
+    nginx_config="${nginx_config//{SERVER_NAMES}/$server_names}"
+    nginx_config="${nginx_config//{LOCATIONS}/$locations}"
+
+    # Write final config
+    echo "$nginx_config" > "$config_file"
 }
 
-# HTTPS server will be added by Certbot when you run: certbot --nginx -d ${DOMAIN}
-NGINX_EOF
+# Create Nginx configuration
+log_info "Configuring Nginx for $SERVER_TYPE server..."
+if ! generate_nginx_config "/etc/nginx/sites-available/narro" "$SERVER_TYPE" "$DOMAIN"; then
+    log_error "Failed to generate Nginx configuration"
+    exit 1
 fi
 
 # Enable site
@@ -302,11 +350,16 @@ rm -f /etc/nginx/sites-enabled/default
 
 # Test Nginx configuration
 log_info "Testing Nginx configuration..."
-if nginx -t; then
-    log_info "Nginx configuration valid"
-    systemctl reload nginx
-else
-    log_error "Nginx configuration test failed"
+if ! nginx -t 2>&1; then
+    log_error "Nginx configuration test failed. Output above."
+    log_error "Run 'sudo nginx -T' to see full configuration"
+    exit 1
+fi
+log_info "Nginx configuration valid"
+
+# Reload Nginx
+if ! systemctl reload nginx; then
+    log_error "Failed to reload Nginx"
     exit 1
 fi
 
@@ -344,13 +397,38 @@ else
 fi
 
 log_info "Provisioning complete!"
-log_warn ""
-log_warn "Next steps:"
-log_warn "1. su - ${NARRO_USER}"
-log_warn "2. cd ${NARRO_HOME}/deployment"
-log_warn "3. Copy docker-compose.yml to this directory"
-log_warn "4. Create .env.production file with your secrets (see env.prod example)"
-log_warn "5. chmod 600 .env.production"
-log_warn "6. certbot --nginx -d ${DOMAIN}  # Get SSL certificate (as root)"
-log_warn "7. ./deploy.sh  # Deploy containers (as narro user)"
+echo ""
+echo -e "${BLUE}=== Next Steps ===${NC}"
+echo ""
+echo "1. Verify Docker installation:"
+echo "   docker --version"
+echo ""
+echo "2. Switch to narro user:"
+echo "   su - ${NARRO_USER}"
+echo ""
+echo "3. Copy docker-compose.yml to deployment directory:"
+echo "   cp /path/to/narro/deployment/docker-compose.yml ${NARRO_HOME}/deployment/"
+echo ""
+echo "4. Copy and configure environment file:"
+echo "   cp /path/to/narro/deployment/scripts/env.prod ${NARRO_HOME}/deployment/.env.production"
+echo "   nano ${NARRO_HOME}/deployment/.env.production"
+echo "   chmod 600 ${NARRO_HOME}/deployment/.env.production"
+echo ""
+echo "5. Get SSL certificate (as root):"
+echo "   sudo certbot --nginx -d ${DOMAIN}"
+if [ "$SERVER_TYPE" = "frontend" ]; then
+    echo "   sudo certbot --nginx -d www.${DOMAIN}"
+fi
+echo ""
+echo "6. Deploy services (as narro user):"
+echo "   cd ${NARRO_HOME}/deployment"
+echo "   docker compose pull"
+echo "   docker compose up -d"
+echo ""
+echo "7. Verify deployment:"
+echo "   docker compose ps"
+echo "   docker compose logs -f"
+echo ""
+echo -e "${GREEN}✓ Server provisioning finished${NC}"
+echo ""
 

@@ -2,29 +2,33 @@
 
 ## Files
 
-- `scripts/provision-debian.sh` - One-time server provisioning script for Debian/Ubuntu (supports frontend, backend, or single-server modes)
-- `scripts/env.prod` - Example production environment file template (legacy, for single-server)
-- `scripts/env.frontend.example` - Example environment file for frontend servers
-- `scripts/env.backend.example` - Example environment file for backend servers
+- `provision-debian.sh` - One-time server provisioning script for Debian/Ubuntu (supports frontend, backend, or single-server modes)
+- `env.prod` - Example production environment file template (for single-server deployments)
+- `env.frontend.example` - Example environment file for frontend servers
+- `env.backend.example` - Example environment file for backend servers
 
-**Note:** Deployment scripts (`scripts/deploy.sh`) are included in the **web** and **backend** repositories separately, not in this narro repository. This allows each repository to manage its own deployment independently.
+**Note:** Deployment scripts (`deploy.sh`) are maintained in the **web** and **backend** repositories separately. This allows each service to manage its own deployment independently. The provisioning script here only handles server setup (Docker, Nginx, user accounts).
 
 ## Quick Start - Single Server (Default)
+
+For a single server running both API and web services.
 
 ### 1. Provision Server (One-time, as root)
 
 ```bash
 # On your Debian/Ubuntu server, as root:
-DOMAIN=narro.info bash provision-debian.sh
+export DOMAIN=narro.info
+bash provision-debian.sh
 # Or specify server type explicitly:
-DOMAIN=narro.info bash provision-debian.sh single
+bash provision-debian.sh single
 ```
 
-This will:
-- Install Docker and Docker Compose
-- Install and configure Nginx
-- Create narro user and directory structure
-- Set up Nginx configuration for both API and web
+This script will:
+- Detect OS (Debian/Ubuntu) and install correct Docker version
+- Install Docker, Docker Compose, Nginx, and Certbot
+- Create `narro` user and directory structure
+- Configure Nginx with reverse proxy for API and web
+- Set up firewall rules (UFW or iptables)
 
 ### 2. Configure Environment (as narro user)
 
@@ -33,13 +37,13 @@ This will:
 su - narro
 cd ~/deployment
 
-# Copy docker-compose.yml to this directory
-cp /path/to/docker-compose.yml .
+# Copy docker-compose.yml from narro repo to this directory
+cp /path/to/narro/deployment/docker-compose.yml .
 
-# Create .env.production from template
-cp ../scripts/env.prod .env.production
+# Create environment file from template
+cp /path/to/narro/deployment/scripts/env.prod .env.production
 
-# Edit with your secrets
+# Edit with your secrets (database URL, registry credentials, etc.)
 nano .env.production
 
 # Set secure permissions
@@ -49,33 +53,28 @@ chmod 600 .env.production
 ### 3. Get SSL Certificate (as root)
 
 ```bash
+# Run as root - ensures port 443 is free
 sudo certbot --nginx -d narro.info -d www.narro.info
 ```
 
-### 4. Deploy (as narro user)
+### 4. Deploy Services (as narro user)
 
-For single-server deployments, copy the deploy scripts from the web and backend repositories:
+Deploy using Docker Compose:
 
 ```bash
 cd ~/deployment
 
-# Copy deploy scripts from the repositories
-cp /path/to/web/scripts/deploy.sh ./scripts/deploy-web.sh
-cp /path/to/backend/scripts/deploy.sh ./scripts/deploy-api.sh
-
-# Make them executable
-chmod +x ./scripts/deploy-*.sh
-
-# Run both deployments
-./scripts/deploy-web.sh    # Deploy web service
-./scripts/deploy-api.sh    # Deploy API service
-```
-
-Or use docker-compose directly:
-```bash
-cd ~/deployment
+# Pull latest images from registry
 docker compose pull
+
+# Start services (API on :3000, web on :3001)
 docker compose up -d
+
+# Check status
+docker compose ps
+
+# View logs
+docker compose logs -f
 ```
 
 ---
@@ -202,14 +201,15 @@ curl -v https://api.narro.info/api/health  # Backend API
 ### Troubleshooting Multi-Host
 
 **Frontend can't reach backend API:**
-- Verify DNS: `namerserver api.narro.info` should resolve to backend IP
-- Check firewall: Backend port 443 must be accessible from frontend
+- Verify DNS: `nslookup api.narro.info` or `dig api.narro.info` should resolve to backend IP
+- Check firewall: Backend port 443 must be accessible from frontend private network
 - Verify backend is running: SSH to backend and run `docker compose ps`
-- Check logs: `docker compose -f docker-compose.api.yml logs -f narro-api`
+- Check logs: `docker compose logs -f narro-api`
 
 **SSL certificate issues:**
-- Ensure backend server has outbound HTTP access for Certbot Let's Encrypt challenges
+- Ensure both servers have outbound HTTP access (port 80) for Certbot Let's Encrypt challenges
 - Both domains must have valid DNS records before running certbot
+- For backend server behind firewall: ensure Let's Encrypt can reach the server during cert validation
 
 ---
 
@@ -251,6 +251,19 @@ See `env.prod` for all required environment variables. Key ones:
 
 ## Troubleshooting
 
+### Docker Repository/Installation Errors
+
+**Error: "404 Not Found" for docker.com/linux/ubuntu or trixie Release**
+- The script now auto-detects your OS (Debian vs Ubuntu) and uses the correct repository
+- If you see this error, ensure you're running the latest version of `provision-debian.sh`
+- The script reads `/etc/os-release` to determine OS, then uses `https://download.docker.com/linux/{debian|ubuntu}`
+
+```bash
+# To check your OS:
+cat /etc/os-release | grep -E "^ID="
+# Should show: debian or ubuntu
+```
+
 ### Docker not accessible
 ```bash
 # Ensure Docker is running
@@ -259,15 +272,30 @@ sudo systemctl start docker
 # Check user is in docker group
 groups
 
-# If not, add and relogin:
+# If narro user not in docker group, add them:
 sudo usermod -aG docker narro
-# Then log out and back in
+# Then log out and back in as narro user
+```
+
+### Nginx configuration errors
+```bash
+# Test Nginx config
+sudo nginx -t
+
+# If test fails, check syntax
+sudo nginx -T | tail -50
+
+# Reload if valid
+sudo systemctl reload nginx
 ```
 
 ### Ports already in use
 ```bash
-# Check what's using ports 3000/3001
-sudo netstat -tlnp | grep -E '3000|3001'
+# Check what's using ports 3000/3001/80/443
+sudo ss -tlnp | grep -E ':3000|:3001|:80|:443'
+
+# Or with netstat (if available)
+sudo netstat -tlnp | grep -E '3000|3001|80|443'
 ```
 
 ### Container won't start
@@ -278,6 +306,9 @@ docker compose logs narro-web
 
 # Check container status
 docker compose ps
+
+# Inspect specific container
+docker compose logs -f narro-api --tail 50
 ```
 
 ## Notes
@@ -288,3 +319,14 @@ docker compose ps
 - SSL certificates are managed by Certbot
 - Services run on ports 3000 (API) and 3001 (Web) internally
 - Nginx proxies these to port 80/443
+
+## Recent Improvements
+
+**v2.0 - December 2025**
+- Fixed Docker repository detection for Debian vs Ubuntu systems
+- Improved error handling with checks at each installation step
+- Consolidated Nginx configuration code to reduce duplication (~150 lines → ~100 lines)
+- Enhanced logging with color-coded messages and clear status indicators
+- Added OS detection to automatically use correct Docker repository
+- Improved firewall configuration with fallback from UFW to iptables
+- Better error messages when installations fail
