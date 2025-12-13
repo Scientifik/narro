@@ -1,7 +1,6 @@
 # NARRO - System Architecture Document
-**Session 1 Deliverable**  
-**Date:** December 2024  
-**Status:** ✅ Finalized
+
+**Status:** ✅ Original Design Document (See `AGENT_CONTEXT.md` for current state)
 
 ---
 
