@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   narro-api:
     image: ${REGISTRY_URL}/narro-api:${IMAGE_TAG:-latest}

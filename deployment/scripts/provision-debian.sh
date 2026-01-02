@@ -2,7 +2,7 @@
 # Debian/Ubuntu Server Provisioning Script for Narro
 # One-time setup: Installs Docker, Nginx, and basic configuration
 # Run as root on a fresh Debian 12+ or Ubuntu 22.04 installation
-# Usage: sudo bash provision-debian.sh [frontend|backend]
+# Usage: sudo bash provision-debian.sh [frontend|backend|scraper]
 
 set -e
 
@@ -71,12 +71,12 @@ validate_system
 check_internet
 
 # Configuration
-SERVER_TYPE="${1}"  # frontend or backend (required)
+SERVER_TYPE="${1}"  # frontend, backend, scraper, or staging (required)
 
 # Validate server type
-if [[ ! "$SERVER_TYPE" =~ ^(frontend|backend)$ ]]; then
+if [[ ! "$SERVER_TYPE" =~ ^(frontend|backend|scraper|staging)$ ]]; then
     log_error "Invalid or missing server type: $SERVER_TYPE"
-    log_error "Usage: sudo bash provision-debian.sh [frontend|backend]"
+    log_error "Usage: sudo bash provision-debian.sh [frontend|backend|scraper|staging]"
     exit 1
 fi
 
@@ -85,6 +85,12 @@ if [ "$SERVER_TYPE" = "frontend" ]; then
     DOMAIN="${DOMAIN:-narro.info}"
 elif [ "$SERVER_TYPE" = "backend" ]; then
     DOMAIN="${DOMAIN:-api.narro.info}"
+elif [ "$SERVER_TYPE" = "scraper" ]; then
+    DOMAIN="${DOMAIN:-utility.narro.info}"
+elif [ "$SERVER_TYPE" = "staging" ]; then
+    DOMAIN="${DOMAIN:-staging.narro.info}"
+    # API_DOMAIN can be set separately, but defaults to same domain for single-server staging
+    API_DOMAIN="${API_DOMAIN:-$DOMAIN}"
 fi
 
 NARRO_USER="${NARRO_USER:-narro}"
@@ -102,6 +108,16 @@ log_info "Updating system packages..."
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get upgrade -y
+
+# Set timezone
+log_info "Setting timezone to America/Denver..."
+timedatectl set-timezone America/Denver || {
+    log_warn "timedatectl not available, using traditional method..."
+    rm -f /etc/localtime
+    ln -s /usr/share/zoneinfo/America/Denver /etc/localtime
+    echo "America/Denver" > /etc/timezone
+}
+log_info "Timezone set to $(timedatectl | grep 'Time zone' || date +%Z)"
 
 # Install essential packages
 log_info "Installing essential packages..."
@@ -338,6 +354,124 @@ server {
 # HTTPS server will be added by Certbot when you run: certbot --nginx -d $domain
 NGINX_EOF
 
+    elif [ "$server_type" = "scraper" ]; then
+        cat > "$config_file" << NGINX_EOF
+# Nginx configuration for Narro Scraper API
+# Domain: $domain
+# Server Type: scraper
+
+upstream scraper {
+    server localhost:8000;  # Local scraper API server
+    keepalive 32;
+}
+
+# HTTP server - serves content initially, Certbot will add HTTPS and redirect
+server {
+    listen 80;
+    listen [::]:80;
+    server_name $domain;
+
+    # Allow Let's Encrypt challenges
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    access_log /var/log/nginx/narro-access.log;
+    error_log /var/log/nginx/narro-error.log;
+
+    client_max_body_size 10M;
+
+    # Scraper API routes
+    location / {
+        proxy_pass http://scraper;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_cache_bypass \$http_upgrade;
+    }
+
+    location /health {
+        proxy_pass http://scraper/health;
+        access_log off;
+    }
+}
+
+# HTTPS server will be added by Certbot when you run: certbot --nginx -d $domain
+NGINX_EOF
+
+    elif [ "$server_type" = "staging" ]; then
+        cat > "$config_file" << NGINX_EOF
+# Nginx configuration for Narro Staging (Single Server - Web + API)
+# Domain: $domain
+# Server Type: staging
+# This configuration serves both web app and API on a single server
+
+upstream api {
+    server localhost:3000;  # Local Go API server
+    keepalive 32;
+}
+
+upstream web {
+    server localhost:3001;  # Local Next.js web application
+    keepalive 32;
+}
+
+# HTTP server - serves content initially, Certbot will add HTTPS and redirect
+server {
+    listen 80;
+    listen [::]:80;
+    server_name $domain;
+
+    # Allow Let's Encrypt challenges
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    access_log /var/log/nginx/narro-access.log;
+    error_log /var/log/nginx/narro-error.log;
+
+    client_max_body_size 10M;
+
+    # API routes (proxy to local backend)
+    location /api/ {
+        proxy_pass http://api;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_cache_bypass \$http_upgrade;
+    }
+
+    # Web app (local)
+    location / {
+        proxy_pass http://web;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_cache_bypass \$http_upgrade;
+        proxy_read_timeout 60s;
+    }
+
+    location /api/health {
+        proxy_pass http://api/api/health;
+        access_log off;
+    }
+}
+
+# HTTPS server will be added by Certbot when you run: certbot --nginx -d $domain
+NGINX_EOF
+
     else
         log_error "Unknown server type: $server_type"
         return 1
@@ -418,7 +552,11 @@ if [ "$SERVER_TYPE" = "frontend" ]; then
 fi
 echo ""
 echo "2. Deploy via CI/CD:"
-echo "   Push code to main branch in the repository (web/ or backend/)"
+if [ "$SERVER_TYPE" = "scraper" ]; then
+    echo "   Push code to main branch in the scraper repository"
+else
+    echo "   Push code to main branch in the repository (web/ or backend/)"
+fi
 echo "   The build-and-deploy.yml workflow will automatically:"
 echo "   - Build Docker images"
 echo "   - Push to container registry"
@@ -429,8 +567,13 @@ echo "   docker compose ps"
 echo "   docker compose logs -f"
 echo ""
 echo "   Or manually verify services:"
-echo "   curl http://localhost:3000/api/health  (backend)"
-echo "   curl http://localhost:3001            (frontend)"
+if [ "$SERVER_TYPE" = "backend" ]; then
+    echo "   curl http://localhost:3000/api/health  (backend)"
+elif [ "$SERVER_TYPE" = "frontend" ]; then
+    echo "   curl http://localhost:3001            (frontend)"
+elif [ "$SERVER_TYPE" = "scraper" ]; then
+    echo "   curl http://localhost:8000/health      (scraper)"
+fi
 echo ""
 echo "Environment:"
 echo "   Deployment directory: ${NARRO_HOME}/deployment"

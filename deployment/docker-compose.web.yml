@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   narro-web:
     image: ${REGISTRY_URL}/narro-web:${IMAGE_TAG:-latest}
@@ -18,8 +16,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
-
-
 
 
 

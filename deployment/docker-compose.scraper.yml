@@ -1,0 +1,25 @@
+services:
+  # Long-running API server for immediate scraping
+  narro-scraper-api:
+    image: ${REGISTRY_URL}/narro-scraper:${IMAGE_TAG:-latest}
+    container_name: narro-scraper-api
+    restart: unless-stopped
+    command: python3 run.py serve --port 8000 --host 0.0.0.0
+    ports:
+      - "8000:8000"  # Exposed on VPC only
+    env_file:
+      - .env.production
+    environment:
+      - API_PORT=8000
+      - API_HOST=0.0.0.0
+      - LOG_LEVEL=INFO
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Note: Cron jobs use the same image but run as ephemeral containers
+  # Example: docker compose run --rm narro-scraper-api python3 run.py scrape --platform twitter
+  # This reuses the API service definition but overrides the command and doesn't create a persistent container

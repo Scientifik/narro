@@ -1,0 +1,40 @@
+services:
+  narro-api:
+    image: ${REGISTRY_URL}/narro-api:${IMAGE_TAG:-staging-latest}
+    container_name: narro-api-staging
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"
+    env_file:
+      - .env.staging
+    environment:
+      - PORT=3000
+      - NODE_ENV=staging
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  narro-web:
+    image: ${REGISTRY_URL}/narro-web:${IMAGE_TAG:-staging-latest}
+    container_name: narro-web-staging
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3001:3001"
+    env_file:
+      - .env.staging
+    environment:
+      - NODE_ENV=staging
+      - PORT=3001
+    depends_on:
+      narro-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3001/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+

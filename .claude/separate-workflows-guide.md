@@ -1,10 +1,13 @@
 # Separate Workflows Deployment Guide
 
-> **Date Updated:** December 11, 2025
+> **Date Updated:** December 11, 2025  
+> **Note:** This document describes the legacy separate-repo approach. For the current monorepo CI/CD workflow with staging and production environments, see [CI/CD Workflow Guide](cicd-workflow.md).
 
 ## Overview
 
-The Narro project now uses **separate independent CI/CD workflows** for each service (backend, web, scraper). This approach was adopted because each service is in its own git repository.
+The Narro project **previously** used **separate independent CI/CD workflows** for each service (backend, web, scraper) when each service was in its own git repository. 
+
+**Current Setup:** The project now uses a unified CI/CD pipeline in the main repository (`.gitea/workflows/build-and-deploy.yml`) that supports staging and production environments. See [CI/CD Workflow Guide](cicd-workflow.md) for current documentation.
 
 ## Architecture
 

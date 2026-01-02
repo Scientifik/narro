@@ -117,8 +117,14 @@ narro/
   - Python 3.13 compatibility
   - Single-run mode for testing
   - CLI tool for replaying Apify runs (`replay_apify_run.py`)
-  - Storage provider system (local filesystem storage for thumbnails)
+  - Storage provider system (S3-compatible storage for thumbnails and avatars)
   - Thumbnail downloading and caching in parsers
+  - **Subcommand architecture** with three commands:
+    - `scrape` - Scrape social media profiles for posts
+    - `avatars` - Fetch and save profile avatars to S3
+    - `update_frequency` - Calculate and update scrape frequency based on posting activity
+  - Avatar tracking with `avatar_updated_at` timestamp field
+  - Direct frequency calculation: `scrape_frequency_hours = int(84 / posts_per_week)`
 
 - **CI/CD:**
   - Gitea Actions workflows for automated builds and deployments
@@ -224,7 +230,12 @@ npm run dev  # Runs on :3000
 ```bash
 cd scraper
 pip install -r requirements.txt
-python3 run.py
+# Scrape profiles
+python3 run.py scrape --platform twitter --limit 50
+# Fetch avatars
+python3 run.py avatars --platform instagram --limit 10
+# Update scrape frequency
+python3 run.py update_frequency --platform twitter
 ```
 
 ### Environment Setup
@@ -254,14 +265,14 @@ Each project has its own `.env.example` file. Copy to `.env` (or `.env.local` fo
 - `SCHEDULER_INTERVAL_MINUTES` - How often to check for profiles (default: 5, not used in single-run mode)
 - `MAX_CONCURRENT_JOBS` - Max parallel jobs (default: 10)
 - `STORAGE_PROVIDER` - Storage provider: 's3' (default: 's3')
-- `STORAGE_ENABLED` - Enable/disable thumbnail storage (default: 'true')
+- `STORAGE_ENABLED` - Enable/disable thumbnail and avatar storage (default: 'true')
 - `STORAGE_S3_BUCKET` - S3 bucket name (required)
 - `STORAGE_S3_REGION` - S3 region (required, e.g., 'us-east-1', 'nyc3')
 - `STORAGE_S3_ENDPOINT` - Optional custom endpoint for S3-compatible services
 - `STORAGE_S3_ACCESS_KEY_ID` - AWS access key or equivalent (required)
 - `STORAGE_S3_SECRET_ACCESS_KEY` - AWS secret key or equivalent (required)
 - `STORAGE_S3_USE_SSL` - Use SSL (default: 'true')
-- `STORAGE_S3_PUBLIC_BASE_URL` - Optional public base URL for constructing thumbnail URLs
+- `STORAGE_S3_PUBLIC_BASE_URL` - Optional public base URL for constructing thumbnail/avatar URLs
 
 ### Database Migrations
 
@@ -281,6 +292,8 @@ Migrations are SQL files in each project's `migrations/` directory. Run in Supab
 **Scraper migrations:**
 - `scraper/migrations/001_scraping_jobs.sql` - Job queue table
 - `scraper/migrations/002_feed_item_duplicates.sql` - Duplicate detection table
+- `scraper/migrations/003_add_error_tracking_fields.sql` - Error tracking fields for profiles
+- `scraper/migrations/004_add_avatar_updated_at.sql` - Avatar tracking field
 
 ## Common Patterns
 
@@ -399,7 +412,9 @@ function MyComponent() {
 | Scraper parsers | `scraper/src/parsers/` |
 | Scraper queue | `scraper/src/queue/` |
 | Scraper providers | `scraper/src/scrapers/` (ScraperAPI, Apify, Mock) |
-| Scraper storage | `scraper/src/storage/` (LocalStorageProvider, base StorageProvider) |
+| Scraper storage | `scraper/src/storage/` (S3StorageProvider, avatar utilities) |
+| Scraper processors | `scraper/src/processors/` (AvatarProcessor) |
+| Scraper frequency updater | `scraper/src/frequency_updater_main.py` |
 | Feed handler | `backend/src/handlers/feed_handler.go` |
 | Feed service | `backend/src/services/feed_service.go` |
 | Feed management handler | `backend/src/handlers/feed_management_handler.go` |
@@ -523,7 +538,7 @@ Update this context file when:
 - [ ] Development workflow changes
 - [ ] New team member onboarding
 
-**Last Updated:** December 11, 2025
+**Last Updated:** December 21, 2024
 
 ---
 

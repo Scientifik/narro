@@ -2,7 +2,7 @@
 
 ## Files
 
-- `provision-debian.sh` - One-time server provisioning script for Debian/Ubuntu (supports frontend or backend servers)
+- `provision-debian.sh` - One-time server provisioning script for Debian/Ubuntu (supports frontend, backend, or scraper servers)
 - `env.frontend.example` - Example environment file for frontend servers
 - `env.backend.example` - Example environment file for backend servers
 
@@ -102,7 +102,31 @@ docker compose ps
 docker compose logs -f narro-api
 ```
 
-**Note:** The `.gitea/workflows/build-and-deploy.yml` workflow in each repository (web/ and backend/) handles all deployment steps automatically. The deploy script is SCP'd to the server and executed by the CI/CD pipeline, which pulls the latest container images and starts the services.
+**Note:** The `.gitea/workflows/build-and-deploy.yml` workflow in each repository (web/, backend/, and scraper/) handles all deployment steps automatically. The deploy script is SCP'd to the server and executed by the CI/CD pipeline, which pulls the latest container images and starts the services.
+
+#### Scraper Server
+
+```bash
+# 1. As root, provision scraper server
+sudo DOMAIN=utility.narro.info bash provision-debian.sh scraper
+
+# 2. As root, get SSL certificate
+sudo certbot --nginx -d utility.narro.info
+
+# 3. Push code to main branch
+# The CI/CD pipeline will automatically:
+#   - Build Docker images
+#   - Push to container registry
+#   - Deploy to this server via deploy script
+git push origin main
+
+# 4. Monitor deployment
+# SSH to scraper server and check:
+docker compose ps
+docker compose logs -f narro-scraper-api
+```
+
+**Note:** The scraper server is internet-exposed (has public IP) and uses Nginx with SSL/TLS for security. The scraper API runs on port 8000 internally and is proxied through Nginx on port 443.
 
 ### Testing Multi-Host Connectivity
 
@@ -138,6 +162,7 @@ curl -v https://api.narro.info/api/health  # Backend API
 |------|-----------|--------|----------------|-------------|
 | Frontend | `provision-debian.sh frontend` | `web/scripts/deploy.sh` (via SCP in CI/CD) | `docker-compose.web.yml` | `env.frontend.example` |
 | Backend | `provision-debian.sh backend` | `backend/scripts/deploy.sh` (via SCP in CI/CD) | `docker-compose.api.yml` | `env.backend.example` |
+| Scraper | `provision-debian.sh scraper` | `scraper/scripts/deploy.sh` (via SCP in CI/CD) | `docker-compose.scraper.yml` | `env.production` (scraper-specific) |
 
 **Note:** Deploy scripts are stored in the web and backend repositories, not in the narro repository. CI/CD workflows SCP these scripts to the server before execution.
 
@@ -235,13 +260,46 @@ docker compose ps
 docker compose logs -f narro-api --tail 50
 ```
 
+### Gitea Runner Docker Connection Issues
+
+**Error: "cannot ping the docker daemon, is it running? Cannot connect to the Docker daemon at unix:///var/run/docker.sock"**
+
+This error occurs when the Gitea runner container cannot access the host Docker daemon. The runner needs the Docker socket mounted as a **bind mount**, not a Docker volume.
+
+**Diagnosis:**
+```bash
+# Check if Docker socket is mounted correctly
+docker inspect <runner-container> --format '{{range .Mounts}}{{.Source}} -> {{.Destination}}{{"\n"}}{{end}}' | grep docker.sock
+
+# Should show: /var/run/docker.sock -> /var/run/docker.sock
+# If it shows: /var/lib/docker/volumes/... -> /var/run/docker.sock (WRONG - this is a volume, not bind mount)
+```
+
+**Fix:**
+Recreate the runner container with the correct bind mount:
+```bash
+# Stop and remove the current container
+docker stop <runner-container>
+docker rm <runner-container>
+
+# Recreate with correct Docker socket bind mount
+docker run -d \
+  --name gitea-runner \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v <data-volume>:/data \
+  -e <env-vars> \
+  gitea/act_runner:latest
+```
+
+**Critical:** Use `-v /var/run/docker.sock:/var/run/docker.sock` (bind mount from host), **NOT** a Docker volume. The socket must be directly mounted from the host filesystem.
+
 ## Notes
 
 - All scripts assume running in `/home/narro/deployment`
 - Docker Compose uses the newer `docker compose` syntax (not `docker-compose`)
 - Secrets are stored in `.env.production` (NOT in git)
 - SSL certificates are managed by Certbot
-- Services run on ports 3000 (API) and 3001 (Web) internally
+- Services run on ports 3000 (API), 3001 (Web), and 8000 (Scraper) internally
 - Nginx proxies these to port 80/443
 
 ## Recent Improvements

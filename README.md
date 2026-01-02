@@ -643,6 +643,32 @@ Narro is a **$5/month social media curation app** that delivers algorithm-free f
 - App Store submissions
 - Launch preparation
 
+## CI/CD AND DEPLOYMENT
+
+### Staging and Production Pipeline
+
+The project uses a unified CI/CD pipeline that supports both staging and production environments:
+
+- **Staging Environment:** Single server hosting both backend and web, deployed from `staging` branch
+- **Production Environment:** Multi-server setup, deployed only from git tags (e.g., `v1.0.0`) on `main` branch
+- **Main Branch:** Builds Docker images but does not deploy (for testing builds)
+
+### Deployment Triggers
+
+- Push to `staging` branch → Builds and deploys to staging server
+- Push to `main` branch → Builds images only (no deployment)
+- Push tag `v*` to `main` → Builds and deploys to production servers
+
+### Configuration
+
+- **Domains** are configured as CI/CD variables (not secrets) for easy updates without code changes
+- **Secrets** (SSH keys, API keys, etc.) are stored securely in Gitea secrets
+- **Image tagging:** Staging uses `staging-{commit-sha}`, production uses `{commit-sha}` and `latest`
+
+For complete CI/CD documentation, see [`.claude/cicd-workflow.md`](.claude/cicd-workflow.md).
+
+---
+
 ## CONCLUSION
 
 This project demonstrates the power of AI-assisted development. Through focused working sessions, we've built a substantial portion of the application in a short timeframe. The session-based approach has proven effective:
