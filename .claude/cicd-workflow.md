@@ -4,41 +4,64 @@
 
 ## Overview
 
-The Narro project uses a unified CI/CD pipeline that supports both **staging** and **production** environments with separate deployment triggers. The workflow is configured in `.gitea/workflows/build-and-deploy.yml` in the main repository.
+The Narro project uses **separate CI/CD workflows** for each service repository (backend, web, scraper), each supporting both **staging** and **production** environments with separate deployment triggers. Each repository has its own `.gitea/workflows/build-and-deploy.yml` that runs independently when code is pushed to that repo.
+
+## Architecture
+
+The project uses **3 separate repositories**, each with its own workflow:
+
+- **backend/** - Go API server
+- **web/** - Next.js web application
+- **scraper/** - Python scraper service
+
+Each repository has its own `.gitea/workflows/build-and-deploy.yml` that runs independently.
 
 ## Deployment Flow
 
 ```mermaid
 graph TD
-    A[Git Push] --> B{Branch/Tag?}
-    B -->|staging branch| C[Build Images with staging tags]
-    B -->|main branch| D[Build Images Only - No Deploy]
-    B -->|v* tag on main| E[Build Images with production tags]
+    A[Push to Backend Repo] --> B1{Backend Branch/Tag?}
+    A2[Push to Web Repo] --> B2{Web Branch/Tag?}
     
-    C --> F[Deploy to Staging Server]
-    E --> G[Deploy to Production Server]
-    D --> H[Images in Registry - Ready for Testing]
+    B1 -->|staging| C1[Build Backend staging-*]
+    B1 -->|main| C2[Build Backend latest]
+    B1 -->|v* tag| C3[Build Backend latest]
     
-    F --> I[Staging Domain]
-    G --> J[Production Domain]
+    B2 -->|staging| D1[Build Web staging-*]
+    B2 -->|main| D2[Build Web latest]
+    B2 -->|v* tag| D3[Build Web latest]
+    
+    C1 --> E1[Deploy to Staging Server]
+    D1 --> E1
+    
+    C2 --> E2[Deploy to Production Backend]
+    C3 --> E2
+    
+    D2 --> E3[Deploy to Production Frontend]
+    D3 --> E3
 ```
 
 ## Workflow Triggers
 
+Each repository (backend, web, scraper) has its own workflow that triggers independently:
+
 ### Staging Deployment
-- **Trigger:** Push to `staging` branch
-- **Action:** Builds Docker images with `staging-{commit-sha}` and `staging-latest` tags, then deploys to staging server
-- **Environment:** Single server hosting both backend and web
+- **Trigger:** Push to `staging` branch in any service repo (backend or web)
+- **Action:** 
+  - Backend: Builds `narro-api:staging-{commit-sha}` and `staging-latest`, deploys to staging server
+  - Web: Builds `narro-web:staging-{commit-sha}` and `staging-latest`, deploys to staging server
+- **Environment:** Single server hosting both backend and web (uses `docker-compose.staging.yml`)
 
 ### Production Deployment
-- **Trigger:** Push a tag matching `v*` pattern (e.g., `v1.0.0`) to `main` branch
-- **Action:** Builds Docker images with `{commit-sha}` and `latest` tags, then deploys to production server
+- **Trigger:** Push to `main` branch OR push a tag matching `v*` pattern (e.g., `v1.0.0`)
+- **Action:**
+  - Backend: Builds `narro-api:{commit-sha}` and `latest`, deploys to production backend server
+  - Web: Builds `narro-web:{commit-sha}` and `latest`, deploys to production frontend server
 - **Environment:** Multi-server setup (separate backend and web servers)
 
-### Main Branch Build Only
-- **Trigger:** Push to `main` branch (without tags)
-- **Action:** Builds Docker images with `main-{commit-sha}` tags but **does not deploy**
-- **Purpose:** Allows testing builds without affecting production or staging
+**Note:** Unlike the original plan, `main` branch pushes **do deploy** to production (existing behavior). Tags provide an alternative way to trigger production deployments.
+
+**Note:** Unlike the original plan, `main` branch pushes **do deploy** to production (existing behavior). Tags provide an alternative way to trigger production deployments.
 
 ## Workflow Variables
 
@@ -66,10 +89,11 @@ These must be configured as **secrets** in Gitea:
 - `REGISTRY_PASSWORD`: Registry password
 
 ### SSH Access
-- `VULTR_SSH_KEY`: SSH private key for production server
+- `VULTR_SSH_KEY`: SSH private key for production servers
 - `VULTR_STAGING_SSH_KEY`: SSH private key for staging server (if different, otherwise uses `VULTR_SSH_KEY`)
-- `VULTR_HOST`: Production server IP/hostname for SSH
-- `VULTR_STAGING_HOST`: Staging server IP/hostname for SSH (if different, otherwise uses `VULTR_HOST`)
+- `VULTR_BACKEND_HOST`: Production backend server IP/hostname (backend repo)
+- `VULTR_FRONTEND_HOST`: Production frontend server IP/hostname (web repo)
+- `VULTR_STAGING_HOST`: Staging server IP/hostname (used by both backend and web repos for staging)
 - `VULTR_USER`: SSH username (e.g., `narro`)
 - `VULTR_DEPLOY_PATH`: Deployment directory (e.g., `/home/narro/deployment`)
 
@@ -85,33 +109,35 @@ These must be configured as **secrets** in Gitea:
 
 - **Staging:** `{image-name}:staging-{commit-sha}` and `{image-name}:staging-latest`
 - **Production:** `{image-name}:{commit-sha}` and `{image-name}:latest`
-- **Main branch builds:** `{image-name}:main-{commit-sha}` (for testing, not deployed)
 
-## Workflow Jobs
+## Workflow Structure (Per Repository)
 
-### 1. security-audit
-- Runs on `main` and `staging` branch pushes
-- Performs npm security audit on web dependencies
-- Must pass before build job runs
+Each repository's workflow follows this pattern:
 
-### 2. build
-- Builds Docker images for both backend and web
-- Determines environment (staging/production/main-only) based on git ref
-- Tags images appropriately
-- Passes domains as build args to web image
-- Always runs (for staging, production, and main branch)
+### Backend Workflow (`backend/.gitea/workflows/build-and-deploy.yml`)
 
-### 3. deploy-staging
-- Only runs when `staging` branch is pushed
-- Requires `build` job to complete successfully
-- Deploys to staging server using `docker-compose.staging.yml`
-- Uses staging-specific image tags
+1. **Determine environment** - Detects staging vs production based on branch/tag
+2. **Build image** - Builds `narro-api` with appropriate tags:
+   - Staging: `staging-{commit-sha}` and `staging-latest`
+   - Production: `{commit-sha}` and `latest`
+3. **Deploy** - Deploys to appropriate server:
+   - Staging: `VULTR_STAGING_HOST` (same server as web)
+   - Production: `VULTR_BACKEND_HOST` (separate backend server)
 
-### 4. deploy-production
-- Only runs when a tag matching `v*` is pushed
-- Requires `build` job to complete successfully
-- Deploys to production server using `docker-compose.api.yml` and `docker-compose.web.yml`
-- Uses production image tags
+### Web Workflow (`web/.gitea/workflows/build-and-deploy.yml`)
+
+1. **Determine environment** - Detects staging vs production based on branch/tag
+2. **Build image** - Builds `narro-web` with appropriate tags and domains:
+   - Staging: `staging-{commit-sha}` and `staging-latest`, uses `STAGING_API` for `NEXT_PUBLIC_API_URL`
+   - Production: `{commit-sha}` and `latest`, uses `PRODUCTION_API` for `NEXT_PUBLIC_API_URL`
+3. **Deploy** - Deploys to appropriate server:
+   - Staging: `VULTR_STAGING_HOST` (same server as backend)
+   - Production: `VULTR_FRONTEND_HOST` (separate frontend server)
+
+### Scraper Workflow (`scraper/.gitea/workflows/build-and-deploy.yml`)
+
+- Currently only supports production deployments
+- Staging support can be added if needed
 
 ## Staging Environment Setup
 
@@ -171,52 +197,78 @@ These must be configured as **secrets** in Gitea:
 
 ### Deploying to Staging
 
-1. Push changes to `staging` branch:
+**For Backend:**
+1. Push changes to `staging` branch in backend repo:
    ```bash
+   cd backend
    git checkout staging
    git merge main  # or make changes directly
    git push origin staging
    ```
 
-2. Workflow automatically:
-   - Builds images with staging tags
+2. Backend workflow automatically:
+   - Builds `narro-api:staging-{commit-sha}` and `staging-latest`
    - Deploys to staging server
-   - Updates both backend and web containers
+
+**For Web:**
+1. Push changes to `staging` branch in web repo:
+   ```bash
+   cd web
+   git checkout staging
+   git merge main  # or make changes directly
+   git push origin staging
+   ```
+
+2. Web workflow automatically:
+   - Builds `narro-web:staging-{commit-sha}` and `staging-latest` with `STAGING_API` domain
+   - Deploys to staging server (same server as backend)
+
+**Note:** Both backend and web deploy to the same staging server, which runs both services using `docker-compose.staging.yml`.
 
 ### Deploying to Production
 
-1. Create and push a version tag:
-   ```bash
-   git checkout main
-   git tag v1.0.0
-   git push origin v1.0.0
-   ```
+**Option 1: Push to main branch (existing behavior)**
+```bash
+# In backend repo
+cd backend
+git checkout main
+git push origin main
 
-2. Workflow automatically:
-   - Builds images with production tags
-   - Deploys to production servers
-   - Updates backend and web separately
+# In web repo
+cd web
+git checkout main
+git push origin main
+```
 
-### Building Without Deploying
+**Option 2: Push a version tag**
+```bash
+# In backend repo
+cd backend
+git checkout main
+git tag v1.0.0
+git push origin v1.0.0
 
-1. Push to `main` branch (without tags):
-   ```bash
-   git checkout main
-   git push origin main
-   ```
+# In web repo
+cd web
+git checkout main
+git tag v1.0.0
+git push origin v1.0.0
+```
 
-2. Workflow builds images with `main-{commit-sha}` tags but does not deploy
-   - Useful for testing builds
-   - Images available in registry for manual testing
+Both methods trigger production deployment:
+- Backend deploys to `VULTR_BACKEND_HOST`
+- Web deploys to `VULTR_FRONTEND_HOST`
 
 ## Changing Domains
 
-Domains are configured as CI/CD variables, so they can be changed without code modifications:
+Domains are configured as CI/CD variables in each repository, so they can be changed without code modifications:
 
 1. Go to Gitea: Repository → Settings → Secrets and Variables → Actions → Variables
-2. Update the domain variable (e.g., `STAGING_DOMAIN` or `STAGING_API`)
+2. Update the domain variable in the appropriate repo:
+   - **Web repo:** Update `STAGING_DOMAIN`, `STAGING_API`, `PRODUCTION_DOMAIN`, `PRODUCTION_API`
+   - **Backend repo:** Update `STAGING_API`, `PRODUCTION_API` (if needed)
 3. Push to the appropriate branch/tag to trigger a new build
-4. The new domain will be embedded in the Docker images
+4. The new domain will be embedded in the Docker images (especially `NEXT_PUBLIC_API_URL` for web)
 
 ## Troubleshooting
 
@@ -280,9 +332,28 @@ Domains are configured as CI/CD variables, so they can be changed without code m
 5. **Update variables carefully** - Domain changes require rebuilding images
 6. **Document changes** - Update this guide when workflow changes
 
+## Repository Structure
+
+```
+narro/ (main monorepo - reference only, no CI/CD)
+├── backend/ (separate repo)
+│   └── .gitea/workflows/build-and-deploy.yml
+├── web/ (separate repo)
+│   └── .gitea/workflows/build-and-deploy.yml
+└── scraper/ (separate repo)
+    └── .gitea/workflows/build-and-deploy.yml
+```
+
+Each repository is independent and has its own:
+- Git history
+- CI/CD workflow
+- Secrets and variables configuration
+- Deployment targets
+
 ## Related Documentation
 
 - [Deployment Guide](deployment-guide.md) - Complete deployment setup instructions
-- [Separate Workflows Guide](separate-workflows-guide.md) - Legacy documentation (if using separate repos)
+- [Separate Workflows Guide](separate-workflows-guide.md) - Additional details on separate repo workflows
 - [Provision Script README](../deployment/scripts/README.md) - Server provisioning instructions
+
 

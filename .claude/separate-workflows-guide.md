@@ -1,13 +1,12 @@
 # Separate Workflows Deployment Guide
 
-> **Date Updated:** December 11, 2025  
-> **Note:** This document describes the legacy separate-repo approach. For the current monorepo CI/CD workflow with staging and production environments, see [CI/CD Workflow Guide](cicd-workflow.md).
+> **Date Updated:** January 2026
 
 ## Overview
 
-The Narro project **previously** used **separate independent CI/CD workflows** for each service (backend, web, scraper) when each service was in its own git repository. 
+The Narro project uses **separate independent CI/CD workflows** for each service (backend, web, scraper). Each service is in its own git repository with its own workflow that runs independently when code is pushed to that repo.
 
-**Current Setup:** The project now uses a unified CI/CD pipeline in the main repository (`.gitea/workflows/build-and-deploy.yml`) that supports staging and production environments. See [CI/CD Workflow Guide](cicd-workflow.md) for current documentation.
+**Current Setup:** Each repository has its own `.gitea/workflows/build-and-deploy.yml` that supports both staging and production environments. See [CI/CD Workflow Guide](cicd-workflow.md) for complete documentation.
 
 ## Architecture
 
@@ -43,74 +42,85 @@ Push to `main` in any repo → Builds & deploys ONLY that service
 
 ### Backend Workflow (`backend/.gitea/workflows/build-and-deploy.yml`)
 
-**Trigger:** Push to `main` branch in backend repo
+**Triggers:** 
+- Push to `main` branch → Production deployment
+- Push to `staging` branch → Staging deployment
+- Push tag `v*` → Production deployment
 
 **Steps:**
-1. Checkout code
-2. Setup Docker Buildx for cross-platform builds
-3. Get commit SHA (for versioning)
-4. Login to container registry
-5. Build Docker image for `narro-api`
-   - Tags: `latest` and `{commit-sha}`
-   - Context: root of backend repo
+1. Determine environment (staging vs production) based on branch/tag
+2. Checkout code
+3. Setup Docker Buildx for cross-platform builds
+4. Get commit SHA (for versioning)
+5. Login to container registry
+6. Build Docker image for `narro-api`
+   - Staging tags: `staging-{commit-sha}` and `staging-latest`
+   - Production tags: `{commit-sha}` and `latest`
    - Platform: linux/amd64
    - Uses layer caching for faster rebuilds
-6. SSH into Vultr server
-7. Pull latest `narro-api` image from registry
-8. Start/restart backend container via docker-compose
-9. Verify deployment (check logs and health status)
+7. SSH into appropriate server (staging or production)
+8. Deploy using appropriate docker-compose file
+9. Verify deployment
 
 **Environment Variables Used:**
 - `IMAGE_NAME`: Always `narro-api`
-- `REGISTRY_URL`: From secrets
+- `REGISTRY_URL`: From variables
+- `STAGING_API`: From variables (staging domain)
+- `PRODUCTION_API`: From variables (production domain)
 
 **Required Secrets:**
-- `REGISTRY_URL`: Container registry URL (e.g., `ord.vultrcr.com/narro`)
 - `REGISTRY_USER`: Registry username
 - `REGISTRY_PASSWORD`: Registry password
-- `VULTR_HOST`: Vultr server IP or hostname
+- `VULTR_BACKEND_HOST`: Production backend server IP/hostname
+- `VULTR_STAGING_HOST`: Staging server IP/hostname (same as web for staging)
 - `VULTR_USER`: SSH username (e.g., `narro`)
+- `VULTR_SSH_KEY`: SSH private key
+- `VULTR_STAGING_SSH_KEY`: SSH private key for staging (if different)
 - `VULTR_SSH_KEY`: Private SSH key
 - `VULTR_DEPLOY_PATH`: Deployment directory (e.g., `/home/narro/deployment`)
 
 ### Web Workflow (`web/.gitea/workflows/build-and-deploy.yml`)
 
-**Trigger:** Push to `main` branch in web repo
+**Triggers:**
+- Push to `main` branch → Production deployment
+- Push to `staging` branch → Staging deployment
+- Push tag `v*` → Production deployment
 
 **Steps:**
-1. Checkout code
-2. Setup Docker Buildx
-3. Get commit SHA
-4. Login to container registry
-5. Build Docker image for `narro-web`
-   - Tags: `latest` and `{commit-sha}`
+1. Determine environment (staging vs production) based on branch/tag
+2. Checkout code
+3. Setup Docker Buildx
+4. Get commit SHA
+5. Login to container registry
+6. Build Docker image for `narro-web`
+   - Staging tags: `staging-{commit-sha}` and `staging-latest`
+   - Production tags: `{commit-sha}` and `latest`
    - Context: root of web repo
    - Platform: linux/amd64
-   - **Build args from secrets:**
-     - `NEXT_PUBLIC_API_URL`
-     - `NEXT_PUBLIC_SUPABASE_URL`
-     - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-     - `NEXT_PUBLIC_SENTRY_DSN`
-     - `SENTRY_ORG`
-     - `SENTRY_PROJECT`
-     - `SENTRY_AUTH_TOKEN`
-6. SSH into Vultr server
-7. Pull latest `narro-web` image
-8. Start/restart web container (waits for healthy API via docker-compose depends_on)
+   - **Build args:**
+     - `NEXT_PUBLIC_API_URL`: Uses `STAGING_API` or `PRODUCTION_API` from variables
+     - `NEXT_PUBLIC_SUPABASE_URL` (from secrets)
+     - `NEXT_PUBLIC_SUPABASE_ANON_KEY` (from secrets)
+     - `NEXT_PUBLIC_SENTRY_DSN` (from secrets, optional)
+     - `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_AUTH_TOKEN` (from secrets, optional)
+7. SSH into appropriate server (staging or production)
+8. Deploy using appropriate docker-compose file
 9. Verify deployment
 
-**Required Secrets:**
-- `REGISTRY_URL`, `REGISTRY_USER`, `REGISTRY_PASSWORD`
-- `VULTR_HOST`, `VULTR_USER`, `VULTR_SSH_KEY`, `VULTR_DEPLOY_PATH`
+**Required Variables:**
+- `REGISTRY_URL`: Container registry URL
+- `STAGING_DOMAIN`: Staging frontend domain
+- `STAGING_API`: Staging API domain
+- `PRODUCTION_DOMAIN`: Production frontend domain
+- `PRODUCTION_API`: Production API domain
 
-**Optional Secrets (for build):**
-- `NEXT_PUBLIC_API_URL`
-- `NEXT_PUBLIC_SUPABASE_URL`
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- `NEXT_PUBLIC_SENTRY_DSN`
-- `SENTRY_ORG`
-- `SENTRY_PROJECT`
-- `SENTRY_AUTH_TOKEN`
+**Required Secrets:**
+- `REGISTRY_USER`, `REGISTRY_PASSWORD`
+- `VULTR_FRONTEND_HOST`: Production frontend server
+- `VULTR_STAGING_HOST`: Staging server (same as backend for staging)
+- `VULTR_USER`, `VULTR_SSH_KEY`, `VULTR_STAGING_SSH_KEY` (if different)
+- `VULTR_DEPLOY_PATH`
+- `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 
 ### Scraper Workflow (`scraper/.gitea/workflows/build-and-deploy.yml`)
 
