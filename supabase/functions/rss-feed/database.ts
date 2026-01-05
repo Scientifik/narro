@@ -26,40 +26,24 @@ export async function getFeedItemsForFeed(
   userId: string,
   limit: number = 50
 ): Promise<FeedItemWithAuthor[]> {
-  // Step 1: Get feed_profile_items for this feed
-  const { data: feedProfileItems, error: feedProfileError } = await supabase
-    .from('feed_profile_items')
-    .select('user_social_profile_id')
-    .eq('feed_id', feedId)
-    .is('deleted_at', null);
-
-  if (feedProfileError || !feedProfileItems?.length) {
-    console.error('[RSS] Feed profile items error:', feedProfileError);
-    return [];
-  }
-
-  const userSocialProfileIds = feedProfileItems.map(
-    (item: any) => item.user_social_profile_id
-  );
-
-  // Step 2: Get social_profile_ids from user_social_profiles
-  const { data: userSocialProfiles, error: uspError } = await supabase
-    .from('user_social_profiles')
+  // Get social_profile_ids directly from user_feed_profiles (consolidated table)
+  const { data: userFeedProfiles, error: ufpError } = await supabase
+    .from('user_feed_profiles')
     .select('social_profile_id')
+    .eq('feed_id', feedId)
     .eq('user_id', userId)
-    .in('id', userSocialProfileIds)
     .is('deleted_at', null);
 
-  if (uspError || !userSocialProfiles?.length) {
-    console.error('[RSS] User social profiles error:', uspError);
+  if (ufpError || !userFeedProfiles?.length) {
+    console.error('[RSS] User feed profiles error:', ufpError);
     return [];
   }
 
-  const socialProfileIds = userSocialProfiles.map(
-    (usp: any) => usp.social_profile_id
+  const socialProfileIds = userFeedProfiles.map(
+    (ufp: any) => ufp.social_profile_id
   );
 
-  // Step 3: Call Postgres function for feed items with author information
+  // Call Postgres function for feed items with author information
   const { data: feedItems, error: itemsError } = await supabase
     .rpc('get_feed_items_with_authors', {
       p_social_profile_ids: socialProfileIds,
