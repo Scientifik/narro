@@ -1,5 +1,10 @@
 # Narro Deployment Guide
 
+**Status:** NEEDS REVIEW
+**Last Updated:** 2026-01-24
+
+---
+
 This guide covers the complete setup and deployment process for Narro production deployment on Vultr.
 
 > **Note:** Deployment configuration files are located in the `deployment/` directory. This guide explains how to use them.

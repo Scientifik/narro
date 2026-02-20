@@ -1,10 +1,25 @@
 # Deployment Scripts
 
+**Status:** CURRENT
+**Last Updated:** 2026-01-31
+
+---
+
+## Quick Start
+
+- **For production releases:** See [Tag Deployment Guide](../TAG_DEPLOYMENT.md)
+- **For server setup:** Continue reading below
+
+---
+
 ## Files
 
 - `provision-debian.sh` - One-time server provisioning script for Debian/Ubuntu (supports frontend, backend, or scraper servers)
 - `env.frontend.example` - Example environment file for frontend servers
 - `env.backend.example` - Example environment file for backend servers
+- `cleanup-registry-images.sh` - Clean up old Docker images from container registry
+- `cleanup-images.sh` - Wrapper script that auto-loads credentials from env.prod
+- `list-registry-images.sh` - List all container images in the registry
 
 **Note:** Deployment scripts (`deploy.sh`) are maintained in the **web** and **backend** repositories separately. This allows each service to manage its own deployment independently. The provisioning script here only handles server setup (Docker, Nginx, user accounts).
 
@@ -153,6 +168,107 @@ curl -v https://api.narro.info/api/health  # Backend API
 - Ensure both servers have outbound HTTP access (port 80) for Certbot Let's Encrypt challenges
 - Both domains must have valid DNS records before running certbot
 - For backend server behind firewall: ensure Let's Encrypt can reach the server during cert validation
+
+---
+
+## Container Registry Cleanup
+
+Each CI/CD build creates new container images tagged with commit SHAs. Over time, these accumulate in the registry and consume disk space. Use the cleanup scripts to remove old images while keeping recent ones.
+
+### Quick Start
+
+The easiest way to clean up images is using the wrapper script:
+
+```bash
+# Dry run - see what would be deleted (keeps last 5)
+cd /Users/kurtdusek/Sites/narro/deployment/scripts
+./cleanup-images.sh --dry-run
+
+# Actually delete old images (keeps last 5)
+./cleanup-images.sh
+
+# Keep more images (e.g., last 10)
+./cleanup-images.sh -k 10
+```
+
+The wrapper script automatically loads registry credentials from `env.prod` in the scripts directory.
+
+### Manual Usage
+
+For more control, use the main cleanup script directly:
+
+```bash
+# Dry run with environment variables
+export REGISTRY_USER=your-username
+export REGISTRY_PASSWORD=your-password
+./cleanup-registry-images.sh --dry-run -k 5
+
+# Clean up, keep last 3 images
+./cleanup-registry-images.sh -u username -p password -k 3
+
+# Clean up specific namespace
+./cleanup-registry-images.sh -n narro -k 5
+```
+
+### What Gets Cleaned
+
+The cleanup script:
+- **Targets three repositories**: `narro/narro-api`, `narro/narro-web`, `narro/narro-scraper`
+- **Keeps the N most recent tags** (default: 5) per repository
+- **Protects special tags** that are never deleted:
+  - `latest` - current production build
+  - `staging-latest` - current staging build
+  - `buildcache` - Docker layer cache for faster builds
+
+### How It Works
+
+1. Connects to Vultr Container Registry using Docker Registry API v2
+2. Lists all tags for each repository
+3. Filters out protected tags (`latest`, `staging-latest`, `buildcache`)
+4. Sorts remaining tags by recency (based on commit SHAs)
+5. Keeps the N most recent tags
+6. Deletes older tags by fetching their manifest digest and calling DELETE endpoint
+
+### Common Use Cases
+
+```bash
+# Before a major release - keep more history
+./cleanup-images.sh -k 10
+
+# After a release - aggressive cleanup
+./cleanup-images.sh -k 3
+
+# Check what would be deleted first
+./cleanup-images.sh --dry-run
+
+# List all images before cleanup
+./list-registry-images.sh
+```
+
+### Scheduling Regular Cleanup
+
+To automate cleanup, add a cron job on your deployment server:
+
+```bash
+# Run cleanup weekly on Sunday at 2am, keep last 5 images
+0 2 * * 0 cd /home/narro/deployment/scripts && ./cleanup-images.sh -k 5 >> /var/log/registry-cleanup.log 2>&1
+```
+
+### Troubleshooting
+
+**Authentication failures:**
+- Verify `REGISTRY_USER` and `REGISTRY_PASSWORD` in `env.prod`
+- Test credentials: `./list-registry-images.sh`
+
+**No images deleted:**
+- Check you have more than the keep count (e.g., >5 images)
+- Verify you're not in dry-run mode
+- Protected tags (`latest`, etc.) are never deleted
+
+**Storage not freed:**
+- Some registries require garbage collection to reclaim space
+- Vultr may take some time to reflect storage changes
+- Check registry documentation for garbage collection details
 
 ---
 

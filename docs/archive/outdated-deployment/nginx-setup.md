@@ -1,5 +1,10 @@
 # Nginx Configuration for Narro
 
+**Status:** NEEDS REVIEW
+**Last Updated:** 2026-01-24
+
+---
+
 This guide covers Nginx setup and SSL/TLS configuration for Narro deployment.
 
 > **Note:** Nginx configuration files are located in `deployment/nginx/`. This guide explains how to use them.

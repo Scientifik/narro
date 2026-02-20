@@ -1,6 +1,9 @@
 # CI/CD Workflow Guide
 
-> **Date Updated:** January 2026
+**Status:** CURRENT
+**Last Updated:** 2026-01-24
+
+---
 
 ## Overview
 
@@ -53,15 +56,13 @@ Each repository (backend, web, scraper) has its own workflow that triggers indep
 - **Environment:** Single server hosting both backend and web (uses `docker-compose.staging.yml`)
 
 ### Production Deployment
-- **Trigger:** Push to `main` branch OR push a tag matching `v*` pattern (e.g., `v1.0.0`)
+- **Trigger:** Push a tag matching `v*` pattern (e.g., `v1.0.0`) on the `main` branch
 - **Action:**
   - Backend: Builds `narro-api:{commit-sha}` and `latest`, deploys to production backend server
   - Web: Builds `narro-web:{commit-sha}` and `latest`, deploys to production frontend server
 - **Environment:** Multi-server setup (separate backend and web servers)
 
-**Note:** Unlike the original plan, `main` branch pushes **do deploy** to production (existing behavior). Tags provide an alternative way to trigger production deployments.
-
-**Note:** Unlike the original plan, `main` branch pushes **do deploy** to production (existing behavior). Tags provide an alternative way to trigger production deployments.
+**Note:** Only version tags trigger production deployment. Pushes to `main` branch without tags do NOT deploy to production.
 
 ## Workflow Variables
 

@@ -525,7 +525,10 @@ Narro is a **$5/month social media curation app** that delivers algorithm-free f
 
 ## CURRENT PROGRESS STATUS
 
-### ✅ Completed Sessions (As of November 29, 2025)
+**Last Updated:** February 6, 2026
+**Note:** This section reflects the original roadmap structure. See `update.md` for detailed recent progress.
+
+### ✅ Completed Sessions (Original Roadmap - As of November 29, 2025)
 
 **Phase 1: Technical Foundation**
 - ✅ **Session 1:** Complete System Architecture - Architecture document finalized, tech stack decided (Go + Gin, Next.js, React Native + Expo, Supabase)
@@ -618,10 +621,12 @@ Narro is a **$5/month social media curation app** that delivers algorithm-free f
 
 ## PROJECT STATUS SUMMARY
 
-**Current State (November 29, 2025):**
-- **Backend:** Fully functional API with authentication, profiles, lists, feed aggregation, and themes system
-- **Web App:** Complete authentication, profile management, feed display, and theme customization
-- **Scraper Service:** Operational with ScraperAPI and Apify support, thumbnail storage, multi-platform parsers
+**Current State (February 6, 2026):**
+- **Backend:** Production-ready API with auth, feed management, RSS, profile favoriting, 24 migrations complete
+- **Web App:** Full-featured with feed customization, Wide Mode, tutorial system, Next.js 16.0.10 (security patched)
+- **Scraper Service:** Operational with multi-provider support, S3 storage, avatar processing, frequency calculation
+- **Mobile App:** Scaffolded, core architecture in place, implementation in progress
+- **Deployment:** Automated CI/CD with Gitea Actions, container registry deployment to Vultr
 - **Mobile App:** Scaffolded, authentication screens pending
 - **Database:** 5 migrations complete, all core tables in place
 

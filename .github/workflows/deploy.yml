@@ -1,4 +1,4 @@
-name: Deploy to Production
+name: Continuous Deployment (Main Branch)
 
 on:
   push:

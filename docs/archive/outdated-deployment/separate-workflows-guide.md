@@ -1,6 +1,9 @@
 # Separate Workflows Deployment Guide
 
-> **Date Updated:** January 2026
+**Status:** CURRENT
+**Last Updated:** 2026-01-24
+
+---
 
 ## Overview
 

@@ -1,5 +1,10 @@
 # Quick Security Checklist
 
+**Status:** CURRENT
+**Last Updated:** 2026-01-24
+
+---
+
 ## Before Each Push to Main
 
 ```bash

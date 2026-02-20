@@ -1,5 +1,10 @@
 # Security & Dependency Management
 
+**Status:** NEEDS REVIEW
+**Last Updated:** 2026-01-24
+
+---
+
 ## Overview
 
 This guide documents how Narro handles dependency security and prevents supply-chain attacks through automated security checks in CI/CD.
