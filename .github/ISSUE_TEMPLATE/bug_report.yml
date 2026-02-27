@@ -1,0 +1,94 @@
+name: Bug Report
+description: Report something that isn't working correctly
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this! Fill out the sections below as best you can. Screenshots are super helpful.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Describe what went wrong in plain language.
+      placeholder: "Example: I clicked the 'Add Profile' button and nothing happened."
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+      description: What should have happened instead?
+      placeholder: "Example: A new profile should have been added to my feed."
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Walk us through exactly what you did so we can recreate the issue.
+      placeholder: |
+        1. Go to '...'
+        2. Click on '...'
+        3. Scroll down to '...'
+        4. See error
+    validations:
+      required: true
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: How bad is it?
+      options:
+        - "Cosmetic - looks off but everything works"
+        - "Annoying - works but something is clearly wrong"
+        - "Broken - a feature doesn't work"
+        - "Blocker - can't use the app at all"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: What part of the app?
+      description: Pick the closest area. If unsure, pick "Not sure".
+      options:
+        - "Sign up / Login"
+        - "Feeds"
+        - "Profiles"
+        - "Posts / Feed Items"
+        - "Settings"
+        - "Navigation"
+        - "Not sure"
+    validations:
+      required: true
+
+  - type: input
+    id: browser
+    attributes:
+      label: Browser & device
+      description: What browser and device are you using?
+      placeholder: "Example: Chrome on Windows, Safari on iPhone 15"
+    validations:
+      required: true
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots or screen recordings
+      description: Drag and drop images here. These help a lot!
+      placeholder: "Paste or drag images here"
+    validations:
+      required: false
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?
+      description: Any other context, details, or things you noticed.
+    validations:
+      required: false

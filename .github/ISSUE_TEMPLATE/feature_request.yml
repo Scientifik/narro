@@ -1,0 +1,70 @@
+name: Feature Request
+description: Suggest an idea or improvement
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Got an idea for something Narro should do? We'd love to hear it. No idea is too small.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: What's frustrating, missing, or could be better?
+      placeholder: "Example: I have too many profiles in one feed and it's hard to find posts from specific people."
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: What would you like to happen?
+      description: Describe your ideal solution. Don't worry about technical details.
+      placeholder: "Example: A way to search or filter posts within a feed."
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: What part of the app?
+      description: Pick the closest area. If unsure, pick "Not sure".
+      options:
+        - "Sign up / Login"
+        - "Feeds"
+        - "Profiles"
+        - "Posts / Feed Items"
+        - "Settings"
+        - "Navigation"
+        - "Not sure"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: importance
+    attributes:
+      label: How important is this to you?
+      options:
+        - "Nice to have - would be cool"
+        - "Important - I'd use this regularly"
+        - "Critical - this is holding me back"
+    validations:
+      required: true
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots or mockups
+      description: If you have any visuals that help explain the idea, drop them here.
+    validations:
+      required: false
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?
+      description: Any other context or examples from other apps.
+    validations:
+      required: false
